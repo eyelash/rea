@@ -1,0 +1,14 @@
+func checkPrime(n) {
+    var i = 2
+    while (i * i <= n) {
+        if (n % i == 0) {
+            print(i)
+            print(n / i)
+        }
+        var i = i + 1
+    }
+}
+
+func main() {
+    checkPrime(6011003)
+}
