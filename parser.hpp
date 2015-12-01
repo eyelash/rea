@@ -36,7 +36,7 @@ class Cursor {
 		fputc ('\n', stream);
 	}
 public:
-	Cursor(const char* string): string(string), position(0), line(0) {}
+	Cursor(const char* string): string(string), position(0), line(1) {}
 	template <class F> void error (const F& functor) {
 		fprintf (stderr, BOLD "line %d: " RED "error: " RESET BOLD, line);
 		functor (stderr);
