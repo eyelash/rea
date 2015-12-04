@@ -63,9 +63,27 @@ public:
 		for (int i = 0; i < n; i++)
 			advance ();
 	}
+	bool is_whitespace () {
+		const char c = string[position];
+		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+	}
 	void skip_whitespace () {
-		while (isspace(string[position]))
-			advance ();
+		while (true) {
+			if (is_whitespace()) {
+				advance ();
+			}
+			else if (starts_with("//")) {
+				while (string[position] != '\n' && string[position] != '\0')
+					advance ();
+			}
+			else if (starts_with("/*")) {
+				while (!starts_with("*/") && string[position] != '\0')
+					advance ();
+			}
+			else {
+				break;
+			}
+		}
 	}
 	bool starts_with (const char* s, bool adv = true) {
 		for (int i = 0;; i++) {
