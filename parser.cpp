@@ -19,7 +19,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 Number* Number::parse (Cursor& cursor) {
 	int n = 0;
-	while (isdigit(*cursor)) {
+	while (cursor[0].is_numeric()) {
 		n *= 10;
 		n += *cursor - '0';
 		++cursor;
@@ -40,8 +40,9 @@ static Operator operators[][7] = {
 };
 
 static Substring parse_identifier(Cursor& cursor) {
+	if (!cursor[0].is_alphabetic()) cursor.error ("expected alphabetic character");
 	int i = 0;
-	while (isalnum(cursor[i])) {
+	while (cursor[i].is_alphanumeric()) {
 		++i;
 	}
 	Substring result = cursor.get_substring (i);
@@ -58,11 +59,11 @@ Expression* Expression::parse (Cursor& cursor, int level) {
 			cursor.expect (")");
 			return expression;
 		}
-		else if (isdigit(*cursor)) {
+		else if (cursor[0].is_numeric()) {
 			// number
 			return Number::parse (cursor);
 		}
-		else if (isalnum(*cursor)) {
+		else if (cursor[0].is_alphabetic()) {
 			Substring identifier = parse_identifier (cursor);
 			cursor.skip_whitespace ();
 			if (cursor.starts_with("(")) {

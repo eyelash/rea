@@ -17,7 +17,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "ast.hpp"
 #include <cstdio>
-#include <cctype>
 
 #define CSI "\e["
 #define RESET CSI "m"
@@ -63,13 +62,9 @@ public:
 		for (int i = 0; i < n; i++)
 			advance ();
 	}
-	bool is_whitespace () {
-		const char c = string[position];
-		return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-	}
 	void skip_whitespace () {
 		while (true) {
-			if (is_whitespace()) {
+			if (Character(string[position]).is_whitespace()) {
 				advance ();
 			}
 			else if (starts_with("//")) {
@@ -109,14 +104,14 @@ public:
 	Substring get_substring (int length) const {
 		return Substring (string + position, length);
 	}
-	char operator [] (int i) const {
+	Character operator [] (int i) const {
 		return string[position + i];
 	}
 	Cursor& operator ++ () {
 		advance ();
 		return *this;
 	}
-	char operator * () const {
+	Character operator * () const {
 		return string[position];
 	}
 	void set_function (Function* function) {

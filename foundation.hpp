@@ -21,6 +21,27 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <cstdlib>
 #include <cstring>
 
+class Character {
+	char c;
+public:
+	Character (char c): c(c) {}
+	operator char () const {
+		return c;
+	}
+	bool is_whitespace () const {
+		return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',';
+	}
+	bool is_alphabetic () const {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+	}
+	bool is_numeric () const {
+		return c >= '0' && c <= '9';
+	}
+	bool is_alphanumeric () const {
+		return is_alphabetic() || is_numeric();
+	}
+};
+
 class String {
 	char* data;
 public:
@@ -42,7 +63,7 @@ public:
 	~String () {
 		free (data);
 	}
-	char operator [] (int i) const {
+	Character operator [] (int i) const {
 		return data[i];
 	}
 	const char* get_data () const {
