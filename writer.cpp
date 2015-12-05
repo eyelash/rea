@@ -22,11 +22,14 @@ void Number::insert (Writer& w) {
 }
 
 void Variable::evaluate (Writer& writer) {
-	n = writer.get_next_value ();
-	writer << INDENT << "%" << n << " = load i32* %" << name << "\n";
+	value = writer.get_next_value ();
+	writer << INDENT << "%" << value << " = load i32* %v" << n << "\n";
 }
 void Variable::insert (Writer& writer) {
-	writer << "%" << n;
+	writer << "%" << value;
+}
+void Variable::insert_address (Writer& writer) {
+	writer << "%v" << n;
 }
 
 void Call::evaluate (Writer& writer) {
@@ -63,7 +66,9 @@ void BinaryExpression::insert (Writer& writer) {
 
 void Assignment::write (Writer& writer) {
 	expression->evaluate (writer);
-	writer << INDENT << "store i32 " << expression << ", i32* %" << name << "\n";
+	writer << INDENT << "store i32 " << expression << ", i32* ";
+	variable->insert_address (writer);
+	writer << "\n";
 }
 
 void If::write (Writer& writer) {
@@ -111,22 +116,24 @@ void Function::write (Writer& writer) {
 	writer << "define i32 @" << name << "(";
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
-		writer << "i32 %." << *i;
+		writer << "i32 %a" << (*i)->get_n();
 		++i;
 	}
 	while (i != arguments.end()) {
-		writer << ", i32 %." << *i;
+		writer << ", i32 %a" << (*i)->get_n();
 		++i;
 	}
 	writer << ") nounwind {\n";
 	writer.reset ();
-	for (const Substring& argument: arguments) {
-		writer << INDENT << "%" << argument << " = alloca i32" << "\n";
-		writer << INDENT << "store i32 %." << argument << ", i32* %" << argument << "\n";
+	for (Variable* variable: variables) {
+		writer << INDENT;
+		variable->insert_address (writer);
+		writer << " = alloca i32" << "\n";
 	}
-	for (const Substring& variable: variables) {
-		writer << INDENT << "%" << variable << " = alloca i32" << "\n";
-		writer << INDENT << "store i32 0, i32* %" << variable << "\n";
+	for (Variable* argument: arguments) {
+		writer << INDENT << "store i32 %a" << argument->get_n() << ", i32* ";
+		argument->insert_address (writer);
+		writer << "\n";
 	}
 	for (Node* node: nodes) {
 		writer << node;

@@ -17,14 +17,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
-Number* Number::parse (Cursor& cursor) {
+Number* NumberParser::parse (Cursor& cursor) {
 	int n = 0;
 	while (cursor[0].is_numeric()) {
 		n *= 10;
 		n += *cursor - '0';
 		++cursor;
 	}
-	return new Number(n);
+	return new Number (n);
 }
 
 struct Operator {
@@ -39,7 +39,7 @@ static Operator operators[][7] = {
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
 
-static Substring parse_identifier(Cursor& cursor) {
+Substring IdentifierParser::parse (Cursor& cursor) {
 	if (!cursor[0].is_alphabetic()) cursor.error ("expected alphabetic character");
 	int i = 0;
 	while (cursor[i].is_alphanumeric()) {
@@ -50,7 +50,7 @@ static Substring parse_identifier(Cursor& cursor) {
 	return result;
 }
 
-Expression* Expression::parse (Cursor& cursor, int level) {
+Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	if (level == 3) {
 		if (cursor.starts_with("(")) {
 			cursor.skip_whitespace ();
@@ -61,10 +61,10 @@ Expression* Expression::parse (Cursor& cursor, int level) {
 		}
 		else if (cursor[0].is_numeric()) {
 			// number
-			return Number::parse (cursor);
+			return NumberParser(this).parse (cursor);
 		}
 		else if (cursor[0].is_alphabetic()) {
-			Substring identifier = parse_identifier (cursor);
+			Substring identifier = IdentifierParser(this).parse (cursor);
 			cursor.skip_whitespace ();
 			if (cursor.starts_with("(")) {
 				// function call
@@ -80,7 +80,13 @@ Expression* Expression::parse (Cursor& cursor, int level) {
 			}
 			else {
 				// variable
-				return new Variable (identifier);
+				Variable* variable = Parser::get_variable (identifier);
+				if (!variable) cursor.error ([&](FILE* f){
+					fputs ("undeclared variable '", f);
+					identifier.write (f);
+					fputs ("'", f);
+				});
+				return variable;
 			}
 		}
 		else {
@@ -105,43 +111,45 @@ Expression* Expression::parse (Cursor& cursor, int level) {
 	return left;
 }
 
-Assignment* Assignment::parse (Cursor& cursor) {
+Assignment* AssignmentParser::parse (Cursor& cursor) {
 	cursor.expect ("var");
 	cursor.skip_whitespace ();
-	Substring name = parse_identifier (cursor);
-	cursor.get_function()->add_variable (name);
+	Substring name = IdentifierParser(this).parse (cursor);
 	cursor.skip_whitespace ();
 	cursor.expect ("=");
 	cursor.skip_whitespace ();
-	Expression* expression = Expression::parse (cursor);
-	return new Assignment (name, expression);
+	Expression* expression = ExpressionParser(this).parse (cursor);
+	Variable* variable = Parser::get_variable (name);
+	if (!variable)
+		variable = Parser::add_variable (name);
+	return new Assignment (variable, expression);
 }
 
-static Node* parse_line (Cursor& cursor) {
+Node* LineParser::parse (Cursor& cursor) {
 	if (cursor.starts_with("var", false)) {
-		return Assignment::parse (cursor);
+		return AssignmentParser(this).parse (cursor);
 	}
 	else if (cursor.starts_with("if", false)) {
-		return If::parse (cursor);
+		return IfParser(this).parse (cursor);
 	}
 	else if (cursor.starts_with("while", false)) {
-		return While::parse (cursor);
+		return WhileParser(this).parse (cursor);
 	}
 	else {
-		return Expression::parse (cursor);
+		return new ExpressionNode (ExpressionParser(this).parse (cursor));
 	}
 }
 
-If* If::parse (Cursor& cursor) {
+If* IfParser::parse (Cursor& cursor) {
 	cursor.expect ("if");
 	cursor.skip_whitespace ();
-	Expression* condition = Expression::parse (cursor);
+	Expression* condition = ExpressionParser(this).parse (cursor);
 	If* result = new If (condition);
 	cursor.skip_whitespace ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}') {
-		Node* node = parse_line (cursor);
+		Node* node = LineParser(this).parse (cursor);
 		result->append_node (node);
 		cursor.skip_whitespace ();
 	}
@@ -149,16 +157,16 @@ If* If::parse (Cursor& cursor) {
 	return result;
 }
 
-While* While::parse (Cursor& cursor) {
+While* WhileParser::parse (Cursor& cursor) {
 	cursor.expect ("while");
 	cursor.skip_whitespace ();
-	Expression* condition = Expression::parse (cursor);
+	Expression* condition = ExpressionParser(this).parse (cursor);
 	While* result = new While (condition);
 	cursor.skip_whitespace ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}') {
-		Node* node = parse_line (cursor);
+		Node* node = LineParser(this).parse (cursor);
 		result->append_node (node);
 		cursor.skip_whitespace ();
 	}
@@ -166,17 +174,17 @@ While* While::parse (Cursor& cursor) {
 	return result;
 }
 
-Function* Function::parse (Cursor& cursor) {
+Function* FunctionParser::parse (Cursor& cursor) {
 	cursor.expect ("func");
 	cursor.skip_whitespace ();
-	Substring name = parse_identifier (cursor);
-	Function* function = new Function(name);
-	cursor.set_function (function);
+	Substring name = IdentifierParser(this).parse (cursor);
+	function = new Function (name);
 	cursor.skip_whitespace ();
 	if (cursor.starts_with("(")) {
 		cursor.skip_whitespace ();
 		while (*cursor != ')') {
-			Substring argument = parse_identifier (cursor);
+			Substring argument_name = IdentifierParser(this).parse (cursor);
+			Variable* argument = Parser::add_variable (argument_name);
 			function->append_argument (argument);
 			cursor.skip_whitespace ();
 		}
@@ -186,19 +194,20 @@ Function* Function::parse (Cursor& cursor) {
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}') {
-		Node* node = parse_line (cursor);
+		Node* node = LineParser(this).parse (cursor);
 		function->append_node (node);
 		cursor.skip_whitespace ();
 	}
-	++cursor;
+	cursor.expect ("}");
+	Parser::add_function (name, function);
 	return function;
 }
 
-Program* Program::parse (Cursor& cursor) {
+Program* ProgramParser::parse (Cursor& cursor) {
 	Program* program = new Program ();
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
-		Node* node = Function::parse (cursor);
+		Node* node = FunctionParser(this).parse (cursor);
 		program->append_node (node);
 		cursor.skip_whitespace ();
 	}

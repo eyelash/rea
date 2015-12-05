@@ -16,7 +16,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 */
 
 #include "parser.hpp"
-#include "writer.hpp"
 
 int main (int argc, char** argv) {
 	if (argc < 2) {
@@ -26,7 +25,7 @@ int main (int argc, char** argv) {
 	String input (argv[1]);
 	if (!input.get_data()) return EXIT_FAILURE;
 	Cursor cursor (input.get_data());
-	Program* program = Program::parse (cursor);
+	Program* program = ProgramParser().parse (cursor);
 	Writer writer;
 	writer << program;
 }

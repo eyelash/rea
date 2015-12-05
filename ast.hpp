@@ -19,29 +19,13 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "foundation.hpp"
 #include <vector>
-#include <set>
 
-class Cursor;
 class Writer;
 
-class Node {
-public:
-	virtual ~Node() = default;
-	virtual void write (Writer&) = 0;
-};
-
-class Type {
-	
-};
-
-class Expression: public Node {
+class Expression {
 public:
 	virtual void evaluate (Writer&) = 0;
 	virtual void insert (Writer&) = 0;
-	virtual void write (Writer& w) {
-		evaluate (w);
-	}
-	static Expression* parse (Cursor& cursor, int level = 0);
 };
 
 class Number: public Expression {
@@ -50,16 +34,17 @@ public:
 	Number (int n): n(n) {}
 	void evaluate (Writer&) {}
 	void insert (Writer& w);
-	static Number* parse (Cursor& cursor);
 };
 
 class Variable: public Expression {
-	Substring name;
 	int n;
+	int value;
 public:
-	Variable (const Substring& name): name(name) {}
+	Variable (int n): n(n) {}
+	int get_n () const { return n; }
 	void evaluate (Writer& writer);
 	void insert (Writer& writer);
+	void insert_address (Writer& writer);
 };
 
 class Call: public Expression {
@@ -119,13 +104,26 @@ public:
 	}
 };
 
-class Assignment: public Node {
-	Substring name;
+class Node {
+public:
+	virtual void write (Writer&) = 0;
+};
+
+class ExpressionNode: public Node {
 	Expression* expression;
 public:
-	Assignment (const Substring& name, Expression* expression): name(name), expression(expression) {}
+	ExpressionNode (Expression* expression): expression(expression) {}
+	void write (Writer& writer) override {
+		expression->evaluate (writer);
+	}
+};
+
+class Assignment: public Node {
+	Variable* variable;
+	Expression* expression;
+public:
+	Assignment (Variable* variable, Expression* expression): variable(variable), expression(expression) {}
 	void write (Writer& writer);
-	static Assignment* parse (Cursor& cursor);
 };
 
 class If: public Node {
@@ -137,7 +135,6 @@ public:
 		nodes.push_back (node);
 	}
 	void write (Writer& writer);
-	static If* parse (Cursor& cursor);
 };
 
 class While: public Node {
@@ -149,27 +146,27 @@ public:
 		nodes.push_back (node);
 	}
 	void write (Writer& writer);
-	static While* parse (Cursor& cursor);
 };
 
 class Function: public Node {
 	Substring name;
-	std::vector<Substring> arguments;
-	std::set<Substring> variables;
+	std::vector<Variable*> arguments;
 	std::vector<Node*> nodes;
+	std::vector<Variable*> variables;
 public:
 	Function (const Substring& name): name(name) {}
-	void append_argument (const Substring& argument) {
+	void append_argument (Variable* argument) {
 		arguments.push_back (argument);
 	}
 	void append_node (Node* node) {
 		nodes.push_back (node);
 	}
-	void add_variable (const Substring& variable) {
-		variables.insert (variable);
+	Variable* add_variable () {
+		Variable* variable = new Variable (variables.size());
+		variables.push_back (variable);
+		return variable;
 	}
 	void write (Writer& writer);
-	static Function* parse (Cursor& cursor);
 };
 
 class Program: public Node {
@@ -179,5 +176,4 @@ public:
 		nodes.push_back (node);
 	}
 	void write (Writer& writer);
-	static Program* parse (Cursor& cursor);
 };

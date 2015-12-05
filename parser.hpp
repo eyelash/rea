@@ -15,8 +15,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 */
 
-#include "ast.hpp"
+#include "writer.hpp"
 #include <cstdio>
+#include <map>
 
 #define CSI "\e["
 #define RESET CSI "m"
@@ -28,7 +29,6 @@ class Cursor {
 	const char* string;
 	int position;
 	int line;
-	Function* function;
 	void print_line (FILE* stream) {
 		for (int i = 0; string[i] != '\n' && string[i] != '\0'; i++)
 			fputc (string[i], stream);
@@ -114,10 +114,117 @@ public:
 	Character operator * () const {
 		return string[position];
 	}
-	void set_function (Function* function) {
-		this->function = function;
+};
+
+class Parser {
+	Parser* parent;
+public:
+	Parser (Parser* parent = nullptr): parent(parent) {}
+	Parser* get_parent () { return parent; }
+	virtual Variable* get_variable (const Substring& name) {
+		if (parent) return parent->get_variable (name);
+		return nullptr;
 	}
-	Function* get_function () {
-		return function;
+	virtual Variable* add_variable_to_function () {
+		if (parent) return parent->add_variable_to_function ();
+		return nullptr;
 	}
+	virtual void add_variable_to_scope (const Substring& name, Variable* variable) {
+		if (parent) parent->add_variable_to_scope (name, variable);
+	}
+	Variable* add_variable (const Substring& name) {
+		Variable* variable = add_variable_to_function ();
+		add_variable_to_scope (name, variable);
+		return variable;
+	}
+	virtual Function* get_function (const Substring& name) {
+		if (parent) return parent->get_function (name);
+		return nullptr;
+	}
+	virtual void add_function (const Substring& name, Function* function) {
+		if (parent) parent->add_function (name, function);
+	}
+};
+
+class ScopeParser: public Parser {
+	std::map<Substring, Variable*> variables;
+public:
+	ScopeParser (Parser* parent = nullptr): Parser(parent) {}
+	Variable* get_variable (const Substring& name) override {
+		auto i = variables.find (name);
+		if (i != variables.end())
+			return i->second;
+		return Parser::get_variable (name);
+	}
+	void add_variable_to_scope (const Substring& name, Variable* variable) override {
+		variables[name] = variable;
+	}
+};
+
+class ProgramParser: public Parser {
+	std::map<Substring, Function*> functions;
+public:
+	ProgramParser (Parser* parent = nullptr): Parser(parent) {}
+	Program* parse (Cursor& cursor);
+	Function* get_function (const Substring& name) override {
+		auto i = functions.find (name);
+		if (i != functions.end())
+			return i->second;
+		return Parser::get_function (name);
+	}
+	void add_function (const Substring& name, Function* function) override {
+		functions[name] = function;
+	}
+};
+
+class FunctionParser: public ScopeParser {
+	Function* function;
+public:
+	FunctionParser (Parser* parent = nullptr): ScopeParser(parent) {}
+	Function* parse (Cursor& cursor);
+	Variable* add_variable_to_function () override {
+		return function->add_variable ();
+	}
+};
+
+class LineParser: public Parser {
+public:
+	LineParser (Parser* parent = nullptr): Parser(parent) {}
+	Node* parse (Cursor& cursor);
+};
+
+class AssignmentParser: public Parser {
+public:
+	AssignmentParser (Parser* parent = nullptr): Parser(parent) {}
+	Assignment* parse (Cursor& cursor);
+};
+
+class IfParser: public ScopeParser {
+public:
+	IfParser (Parser* parent = nullptr): ScopeParser(parent) {}
+	If* parse (Cursor& cursor);
+};
+
+class WhileParser: public Parser {
+public:
+	WhileParser (Parser* parent = nullptr): Parser(parent) {}
+	While* parse (Cursor& cursor);
+};
+
+class ExpressionParser: public Parser {
+public:
+	ExpressionParser (Parser* parent = nullptr): Parser(parent) {}
+	Expression* parse (Cursor& cursor, int level = 0);
+};
+
+class NumberParser: public Parser {
+public:
+	NumberParser (Parser* parent = nullptr): Parser(parent) {}
+	Number* parse (Cursor& cursor);
+};
+
+class IdentifierParser: public Parser {
+public:
+	IdentifierParser (Parser* parent = nullptr): Parser(parent) {}
+	Substring parse (Cursor& cursor);
 };

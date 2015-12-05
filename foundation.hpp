@@ -79,6 +79,10 @@ public:
 	void write (FILE* file) const {
 		fwrite (start, 1, length, file);
 	}
+	bool operator == (const Substring& s) const {
+		if (length != s.length) return false;
+		return strncmp (start, s.start, length) == 0;
+	}
 	bool operator < (const Substring& s) const {
 		int r = strncmp (start, s.start, length < s.length ? length : s.length);
 		if (r == 0) return length < s.length;
