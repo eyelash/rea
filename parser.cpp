@@ -27,6 +27,17 @@ Number* NumberParser::parse (Cursor& cursor) {
 	return new Number (n);
 }
 
+Substring IdentifierParser::parse (Cursor& cursor) {
+	if (!cursor[0].is_alphabetic()) cursor.error ("expected alphabetic character");
+	int i = 0;
+	while (cursor[i].is_alphanumeric()) {
+		++i;
+	}
+	Substring result = cursor.get_substring (i);
+	cursor.advance (i);
+	return result;
+}
+
 struct Operator {
 	const char* identifier;
 	Expression* (*create) (Expression*, Expression*);
@@ -38,17 +49,6 @@ static Operator operators[][7] = {
 	{{"+", BE::add}, {"-", BE::sub}, NULL},
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
-
-Substring IdentifierParser::parse (Cursor& cursor) {
-	if (!cursor[0].is_alphabetic()) cursor.error ("expected alphabetic character");
-	int i = 0;
-	while (cursor[i].is_alphanumeric()) {
-		++i;
-	}
-	Substring result = cursor.get_substring (i);
-	cursor.advance (i);
-	return result;
-}
 
 Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	if (level == 3) {
@@ -65,9 +65,14 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 		}
 		else if (cursor[0].is_alphabetic()) {
 			Substring identifier = IdentifierParser(this).parse (cursor);
-			cursor.skip_whitespace ();
-			if (cursor.starts_with("(")) {
-				// function call
+			Variable* variable = Parser::get_variable (identifier);
+			if (variable) {
+				return variable;
+			}
+			Function* function = Parser::get_function (identifier);
+			if (function) {
+				cursor.skip_whitespace ();
+				cursor.expect ("(");
 				Call* call = new Call (identifier);
 				cursor.skip_whitespace ();
 				while (*cursor != ')') {
@@ -78,16 +83,12 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 				cursor.expect (")");
 				return call;
 			}
-			else {
-				// variable
-				Variable* variable = Parser::get_variable (identifier);
-				if (!variable) cursor.error ([&](FILE* f){
-					fputs ("undeclared variable '", f);
-					identifier.write (f);
-					fputs ("'", f);
-				});
-				return variable;
-			}
+			cursor.error ([&](FILE* f){
+				fputs ("undefined identifier '", f);
+				identifier.write (f);
+				fputs ("'", f);
+			});
+			return nullptr;
 		}
 		else {
 			cursor.error ("unexpected character");
@@ -140,20 +141,27 @@ Node* LineParser::parse (Cursor& cursor) {
 	}
 }
 
+std::vector<Node*> BlockParser::parse (Cursor& cursor) {
+	std::vector<Node*> result;
+	cursor.expect ("{");
+	cursor.skip_whitespace ();
+	while (*cursor != '}') {
+		Node* node = LineParser(this).parse (cursor);
+		result.push_back (node);
+		cursor.skip_whitespace ();
+	}
+	cursor.expect ("}");
+	return result;
+}
+
 If* IfParser::parse (Cursor& cursor) {
 	cursor.expect ("if");
 	cursor.skip_whitespace ();
 	Expression* condition = ExpressionParser(this).parse (cursor);
 	If* result = new If (condition);
 	cursor.skip_whitespace ();
-	cursor.expect ("{");
-	cursor.skip_whitespace ();
-	while (*cursor != '}') {
-		Node* node = LineParser(this).parse (cursor);
-		result->append_node (node);
-		cursor.skip_whitespace ();
-	}
-	cursor.expect ("}");
+	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
+	result->append_nodes (nodes);
 	return result;
 }
 
@@ -163,14 +171,8 @@ While* WhileParser::parse (Cursor& cursor) {
 	Expression* condition = ExpressionParser(this).parse (cursor);
 	While* result = new While (condition);
 	cursor.skip_whitespace ();
-	cursor.expect ("{");
-	cursor.skip_whitespace ();
-	while (*cursor != '}') {
-		Node* node = LineParser(this).parse (cursor);
-		result->append_node (node);
-		cursor.skip_whitespace ();
-	}
-	cursor.expect ("}");
+	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
+	result->append_nodes (nodes);
 	return result;
 }
 
@@ -180,31 +182,27 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	Substring name = IdentifierParser(this).parse (cursor);
 	function = new Function (name);
 	cursor.skip_whitespace ();
+	BlockParser block_parser (this);
 	if (cursor.starts_with("(")) {
 		cursor.skip_whitespace ();
 		while (*cursor != ')') {
 			Substring argument_name = IdentifierParser(this).parse (cursor);
-			Variable* argument = Parser::add_variable (argument_name);
+			Variable* argument = block_parser.add_variable (argument_name);
 			function->append_argument (argument);
 			cursor.skip_whitespace ();
 		}
 		cursor.expect (")");
 		cursor.skip_whitespace ();
 	}
-	cursor.expect ("{");
-	cursor.skip_whitespace ();
-	while (*cursor != '}') {
-		Node* node = LineParser(this).parse (cursor);
-		function->append_node (node);
-		cursor.skip_whitespace ();
-	}
-	cursor.expect ("}");
-	Parser::add_function (name, function);
+	std::vector<Node*> nodes = block_parser.parse (cursor);
+	function->append_nodes (nodes);
+	Parser::add_function (function);
 	return function;
 }
 
 Program* ProgramParser::parse (Cursor& cursor) {
-	Program* program = new Program ();
+	program = new Program ();
+	add_function (new Function("print"));
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
 		Node* node = FunctionParser(this).parse (cursor);

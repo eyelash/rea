@@ -36,8 +36,8 @@ void Call::evaluate (Writer& writer) {
 	for (Expression* argument: arguments) {
 		argument->evaluate (writer);
 	}
-	n = writer.get_next_value ();
-	writer << INDENT << "%" << n << " = call i32 @" << name << "(";
+	value = writer.get_next_value ();
+	writer << INDENT << "%" << value << " = call i32 @" << name << "(";
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
 		writer << "i32 " << *i;
@@ -50,18 +50,18 @@ void Call::evaluate (Writer& writer) {
 	writer << ")\n";
 }
 void Call::insert (Writer& writer) {
-	writer << "%" << n;
+	writer << "%" << value;
 }
 
 void BinaryExpression::evaluate (Writer& writer) {
 	left->evaluate (writer);
 	right->evaluate (writer);
-	n = writer.get_next_value ();
-	writer << INDENT << "%" << n << " = " << instruction << " i32 " << left << ", " << right;
+	value = writer.get_next_value ();
+	writer << INDENT << "%" << value << " = " << instruction << " i32 " << left << ", " << right;
 	writer << "\n";
 }
 void BinaryExpression::insert (Writer& writer) {
-	writer << "%" << n;
+	writer << "%" << value;
 }
 
 void Assignment::write (Writer& writer) {

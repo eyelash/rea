@@ -76,6 +76,7 @@ class Substring {
 	int length;
 public:
 	Substring (const char* start, int length): start(start), length(length) {}
+	Substring (const char* string): start(string), length(strlen(string)) {}
 	void write (FILE* file) const {
 		fwrite (start, 1, length, file);
 	}

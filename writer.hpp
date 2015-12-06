@@ -15,10 +15,18 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 */
 
-#include "ast.hpp"
+#include "foundation.hpp"
 #include <cstdio>
+#include <vector>
 
 #define INDENT "  "
+
+class Writer;
+
+class Printable {
+public:
+	virtual void print (Writer&) = 0;
+};
 
 class Writer {
 	FILE* file;
@@ -38,12 +46,8 @@ public:
 		substring.write (file);
 		return *this;
 	}
-	Writer& operator << (Node* node) {
-		node->write (*this);
-		return *this;
-	}
-	Writer& operator << (Expression* expression) {
-		expression->insert (*this);
+	Writer& operator << (Printable* printable) {
+		printable->print (*this);
 		return *this;
 	}
 	int get_next_value () {
@@ -58,4 +62,169 @@ public:
 		value_counter = 0;
 		label_counter = 0;
 	}
+};
+
+class Expression: public Printable {
+public:
+	virtual void evaluate (Writer&) = 0;
+	virtual void insert (Writer&) = 0;
+	void print (Writer& writer) override {
+		insert (writer);
+	}
+};
+
+class Number: public Expression {
+	int n;
+public:
+	Number (int n): n(n) {}
+	void evaluate (Writer&) {}
+	void insert (Writer& w);
+};
+
+class Variable: public Expression {
+	int n;
+	int value;
+public:
+	Variable (int n): n(n) {}
+	int get_n () const { return n; }
+	void evaluate (Writer& writer);
+	void insert (Writer& writer);
+	void insert_address (Writer& writer);
+};
+
+class Call: public Expression {
+	Substring name;
+	std::vector<Expression*> arguments;
+	int value;
+public:
+	Call (const Substring& name): name(name) {}
+	void append_argument (Expression* argument) {
+		arguments.push_back (argument);
+	}
+	void evaluate (Writer& writer);
+	void insert (Writer& writer);
+};
+
+class BinaryExpression: public Expression {
+	const char* instruction;
+	Expression* left;
+	Expression* right;
+	int value;
+public:
+	BinaryExpression (const char* instruction, Expression* left, Expression* right): instruction(instruction), left(left), right(right) {}
+	void evaluate (Writer& writer);
+	void insert (Writer& writer);
+	static Expression* add (Expression* left, Expression* right) {
+		return new BinaryExpression ("add", left, right);
+	}
+	static Expression* sub (Expression* left, Expression* right) {
+		return new BinaryExpression ("sub", left, right);
+	}
+	static Expression* mul (Expression* left, Expression* right) {
+		return new BinaryExpression ("mul", left, right);
+	}
+	static Expression* div (Expression* left, Expression* right) {
+		return new BinaryExpression ("sdiv", left, right);
+	}
+	static Expression* mod (Expression* left, Expression* right) {
+		return new BinaryExpression ("srem", left, right);
+	}
+	static Expression* eq (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp eq", left, right);
+	}
+	static Expression* ne (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp ne", left, right);
+	}
+	static Expression* lt (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp slt", left, right);
+	}
+	static Expression* gt (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp sgt", left, right);
+	}
+	static Expression* le (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp sle", left, right);
+	}
+	static Expression* ge (Expression* left, Expression* right) {
+		return new BinaryExpression ("icmp sge", left, right);
+	}
+};
+
+class Node: public Printable {
+public:
+	virtual void write (Writer&) = 0;
+	void print (Writer& writer) override {
+		write (writer);
+	}
+};
+
+class ExpressionNode: public Node {
+	Expression* expression;
+public:
+	ExpressionNode (Expression* expression): expression(expression) {}
+	void write (Writer& writer) override {
+		expression->evaluate (writer);
+	}
+};
+
+class Assignment: public Node {
+	Variable* variable;
+	Expression* expression;
+public:
+	Assignment (Variable* variable, Expression* expression): variable(variable), expression(expression) {}
+	void write (Writer& writer) override;
+};
+
+class If: public Node {
+	Expression* condition;
+	std::vector<Node*> nodes;
+public:
+	If (Expression* condition): condition(condition) {}
+	void append_nodes (const std::vector<Node*>& _nodes) {
+		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	}
+	void write (Writer& writer) override;
+};
+
+class While: public Node {
+	Expression* condition;
+	std::vector<Node*> nodes;
+public:
+	While (Expression* condition): condition(condition) {}
+	void append_nodes (const std::vector<Node*>& _nodes) {
+		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	}
+	void write (Writer& writer) override;
+};
+
+class Function: public Node {
+	Substring name;
+	std::vector<Variable*> arguments;
+	std::vector<Node*> nodes;
+	std::vector<Variable*> variables;
+public:
+	Function (const Substring& name): name(name) {}
+	const Substring& get_name () const {
+		return name;
+	}
+	void append_argument (Variable* argument) {
+		arguments.push_back (argument);
+	}
+	void append_nodes (const std::vector<Node*>& _nodes) {
+		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	}
+	Variable* add_variable () {
+		Variable* variable = new Variable (variables.size());
+		variables.push_back (variable);
+		return variable;
+	}
+	void write (Writer& writer) override;
+};
+
+class Program: public Node {
+	std::vector<Node*> nodes;
+public:
+	void append_node (Node* node) {
+		nodes.push_back (node);
+	}
+	void write (Writer& writer) override;
 };
