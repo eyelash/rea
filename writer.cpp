@@ -17,13 +17,17 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "writer.hpp"
 
+Void Type::VOID;
+Bool Type::BOOL;
+Int Type::INT;
+
 void Number::insert (Writer& w) {
 	w << n;
 }
 
 void Variable::evaluate (Writer& writer) {
 	value = writer.get_next_value ();
-	writer << INDENT << "%" << value << " = load i32* %v" << n << "\n";
+	writer << INDENT << "%" << value << " = load " << type << "* %v" << n << "\n";
 }
 void Variable::insert (Writer& writer) {
 	writer << "%" << value;
@@ -37,20 +41,27 @@ void Call::evaluate (Writer& writer) {
 		argument->evaluate (writer);
 	}
 	value = writer.get_next_value ();
-	writer << INDENT << "%" << value << " = call i32 @" << name << "(";
+	writer << INDENT << "%" << value << " = call i32 @" << function->get_name() << "(";
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
-		writer << "i32 " << *i;
+		writer << (*i)->get_type() << " " << *i;
 		++i;
 	}
 	while (i != arguments.end()) {
-		writer << ", i32 " << *i;
+		writer << ", " << (*i)->get_type() << " " << *i;
 		++i;
 	}
 	writer << ")\n";
 }
 void Call::insert (Writer& writer) {
 	writer << "%" << value;
+}
+bool Call::validate () {
+	if (arguments.size() != function->get_arguments().size()) return false;
+	for (int i = 0; i < arguments.size(); i++) {
+		if (arguments[i]->get_type() != function->get_arguments()[i]->get_type()) return false;
+	}
+	return true;
 }
 
 void BinaryExpression::evaluate (Writer& writer) {
@@ -66,7 +77,7 @@ void BinaryExpression::insert (Writer& writer) {
 
 void Assignment::write (Writer& writer) {
 	expression->evaluate (writer);
-	writer << INDENT << "store i32 " << expression << ", i32* ";
+	writer << INDENT << "store " << expression->get_type() << " " << expression << ", " << variable->get_type() << "* ";
 	variable->insert_address (writer);
 	writer << "\n";
 }
@@ -116,11 +127,11 @@ void Function::write (Writer& writer) {
 	writer << "define i32 @" << name << "(";
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
-		writer << "i32 %a" << (*i)->get_n();
+		writer << (*i)->get_type() << " %a" << (*i)->get_n();
 		++i;
 	}
 	while (i != arguments.end()) {
-		writer << ", i32 %a" << (*i)->get_n();
+		writer << ", " << (*i)->get_type() << " %a" << (*i)->get_n();
 		++i;
 	}
 	writer << ") nounwind {\n";
@@ -128,10 +139,10 @@ void Function::write (Writer& writer) {
 	for (Variable* variable: variables) {
 		writer << INDENT;
 		variable->insert_address (writer);
-		writer << " = alloca i32" << "\n";
+		writer << " = alloca " << variable->get_type() << "\n";
 	}
 	for (Variable* argument: arguments) {
-		writer << INDENT << "store i32 %a" << argument->get_n() << ", i32* ";
+		writer << INDENT << "store " << argument->get_type() << " %a" << argument->get_n() << ", " << argument->get_type() << "* ";
 		argument->insert_address (writer);
 		writer << "\n";
 	}

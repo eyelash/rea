@@ -4,7 +4,7 @@ Rea
 Just a toy compiler
 
 ```
-func checkPrime(n) {
+func checkPrime(n: Int) {
     var i = 2
     while (i * i <= n) {
         if (n % i == 0) {

@@ -17,6 +17,17 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
+Type* TypeParser::parse (Cursor& cursor, bool allow_void) {
+	if (allow_void && cursor.starts_with("Void"))
+		return &Type::VOID;
+	if (cursor.starts_with("Bool"))
+		return &Type::BOOL;
+	if (cursor.starts_with("Int"))
+		return &Type::INT;
+	cursor.error ("unknown type");
+	return nullptr;
+}
+
 Number* NumberParser::parse (Cursor& cursor) {
 	int n = 0;
 	while (cursor[0].is_numeric()) {
@@ -44,8 +55,9 @@ struct Operator {
 };
 
 typedef BinaryExpression BE;
+typedef ComparisonExpression CE;
 static Operator operators[][7] = {
-	{{"==", BE::eq}, {"!=", BE::ne}, {"<=", BE::le}, {">=", BE::ge}, {"<", BE::lt}, {">", BE::gt}, NULL},
+	{{"==", CE::eq}, {"!=", CE::ne}, {"<=", CE::le}, {">=", CE::ge}, {"<", CE::lt}, {">", CE::gt}, NULL},
 	{{"+", BE::add}, {"-", BE::sub}, NULL},
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
@@ -73,13 +85,14 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 			if (function) {
 				cursor.skip_whitespace ();
 				cursor.expect ("(");
-				Call* call = new Call (identifier);
+				Call* call = new Call (function);
 				cursor.skip_whitespace ();
 				while (*cursor != ')') {
 					Expression* argument = parse (cursor);
 					call->append_argument (argument);
 					cursor.skip_whitespace ();
 				}
+				if (!call->validate()) cursor.error ("invalid arguments");
 				cursor.expect (")");
 				return call;
 			}
@@ -105,6 +118,9 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 				cursor.skip_whitespace ();
 				Expression* right = parse (cursor, level + 1);
 				if (op->create) left = op->create (left, right);
+				if (!left->validate()) cursor.error ([&](FILE* f){
+					fprintf (f, "invalid operands for operator '%s'", op->identifier);
+				});
 				match = true;
 			}
 		}
@@ -122,7 +138,7 @@ Assignment* AssignmentParser::parse (Cursor& cursor) {
 	Expression* expression = ExpressionParser(this).parse (cursor);
 	Variable* variable = Parser::get_variable (name);
 	if (!variable)
-		variable = Parser::add_variable (name);
+		variable = Parser::add_variable (name, expression->get_type());
 	return new Assignment (variable, expression);
 }
 
@@ -158,6 +174,7 @@ If* IfParser::parse (Cursor& cursor) {
 	cursor.expect ("if");
 	cursor.skip_whitespace ();
 	Expression* condition = ExpressionParser(this).parse (cursor);
+	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	If* result = new If (condition);
 	cursor.skip_whitespace ();
 	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
@@ -169,6 +186,7 @@ While* WhileParser::parse (Cursor& cursor) {
 	cursor.expect ("while");
 	cursor.skip_whitespace ();
 	Expression* condition = ExpressionParser(this).parse (cursor);
+	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	While* result = new While (condition);
 	cursor.skip_whitespace ();
 	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
@@ -179,30 +197,54 @@ While* WhileParser::parse (Cursor& cursor) {
 Function* FunctionParser::parse (Cursor& cursor) {
 	cursor.expect ("func");
 	cursor.skip_whitespace ();
+	
+	// name
 	Substring name = IdentifierParser(this).parse (cursor);
 	function = new Function (name);
 	cursor.skip_whitespace ();
+	
+	// argument list
 	BlockParser block_parser (this);
-	if (cursor.starts_with("(")) {
+	cursor.expect("(");
+	cursor.skip_whitespace ();
+	while (*cursor != ')') {
+		Substring argument_name = IdentifierParser(this).parse (cursor);
 		cursor.skip_whitespace ();
-		while (*cursor != ')') {
-			Substring argument_name = IdentifierParser(this).parse (cursor);
-			Variable* argument = block_parser.add_variable (argument_name);
-			function->append_argument (argument);
-			cursor.skip_whitespace ();
-		}
-		cursor.expect (")");
+		cursor.expect (":");
+		cursor.skip_whitespace ();
+		const Type* argument_type = TypeParser(this).parse (cursor, false);
+		Variable* argument = block_parser.add_variable (argument_name, argument_type);
+		function->append_argument (argument);
 		cursor.skip_whitespace ();
 	}
+	cursor.expect (")");
+	cursor.skip_whitespace ();
+	
+	// return type
+	if (cursor.starts_with(":")) {
+		cursor.skip_whitespace ();
+		Type* return_type = TypeParser(this).parse (cursor, true);
+		function->set_return_type (return_type);
+		cursor.skip_whitespace ();
+	}
+	
+	// code block
 	std::vector<Node*> nodes = block_parser.parse (cursor);
 	function->append_nodes (nodes);
 	Parser::add_function (function);
 	return function;
 }
 
+static Function* create_function (const char* name, std::initializer_list<const Type*> arguments) {
+	Function* function = new Function (name);
+	for (const Type* type: arguments)
+		function->append_argument (new Variable (0, type));
+	return function;
+}
+
 Program* ProgramParser::parse (Cursor& cursor) {
 	program = new Program ();
-	add_function (new Function("print"));
+	add_function (create_function("print", {&Type::INT}));
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
 		Node* node = FunctionParser(this).parse (cursor);

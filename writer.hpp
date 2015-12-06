@@ -27,6 +27,10 @@ class Printable {
 public:
 	virtual void print (Writer&) = 0;
 };
+class ConstPrintable {
+public:
+	virtual void print (Writer&) const = 0;
+};
 
 class Writer {
 	FILE* file;
@@ -50,6 +54,14 @@ public:
 		printable->print (*this);
 		return *this;
 	}
+	Writer& operator << (const ConstPrintable* printable) {
+		printable->print (*this);
+		return *this;
+	}
+	Writer& operator << (const ConstPrintable& printable) {
+		printable.print (*this);
+		return *this;
+	}
 	int get_next_value () {
 		++value_counter;
 		return value_counter;
@@ -64,10 +76,14 @@ public:
 	}
 };
 
+#include "type.hpp"
+
 class Expression: public Printable {
 public:
 	virtual void evaluate (Writer&) = 0;
 	virtual void insert (Writer&) = 0;
+	virtual const Type* get_type () = 0;
+	virtual bool validate () { return true; }
 	void print (Writer& writer) override {
 		insert (writer);
 	}
@@ -79,30 +95,43 @@ public:
 	Number (int n): n(n) {}
 	void evaluate (Writer&) {}
 	void insert (Writer& w);
+	const Type* get_type () override {
+		return &Type::INT;
+	}
 };
 
 class Variable: public Expression {
 	int n;
+	const Type* type;
 	int value;
 public:
-	Variable (int n): n(n) {}
+	Variable (int n, const Type* type): n(n), type(type) {}
 	int get_n () const { return n; }
 	void evaluate (Writer& writer);
 	void insert (Writer& writer);
 	void insert_address (Writer& writer);
+	const Type* get_type () override {
+		return type;
+	}
 };
 
+class Function;
+
 class Call: public Expression {
-	Substring name;
+	Function* function;
 	std::vector<Expression*> arguments;
 	int value;
 public:
-	Call (const Substring& name): name(name) {}
+	Call (Function* function): function(function) {}
 	void append_argument (Expression* argument) {
 		arguments.push_back (argument);
 	}
 	void evaluate (Writer& writer);
 	void insert (Writer& writer);
+	const Type* get_type () override {
+		return &Type::INT;
+	}
+	bool validate () override;
 };
 
 class BinaryExpression: public Expression {
@@ -114,6 +143,12 @@ public:
 	BinaryExpression (const char* instruction, Expression* left, Expression* right): instruction(instruction), left(left), right(right) {}
 	void evaluate (Writer& writer);
 	void insert (Writer& writer);
+	const Type* get_type () override {
+		return left->get_type ();
+	}
+	bool validate () override {
+		return left->get_type() == &Type::INT && right->get_type() == &Type::INT;
+	}
 	static Expression* add (Expression* left, Expression* right) {
 		return new BinaryExpression ("add", left, right);
 	}
@@ -129,23 +164,31 @@ public:
 	static Expression* mod (Expression* left, Expression* right) {
 		return new BinaryExpression ("srem", left, right);
 	}
+};
+
+class ComparisonExpression: public BinaryExpression {
+public:
+	ComparisonExpression (const char* instruction, Expression* left, Expression* right): BinaryExpression(instruction, left, right) {}
+	const Type* get_type () override {
+		return &Type::BOOL;
+	}
 	static Expression* eq (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp eq", left, right);
+		return new ComparisonExpression ("icmp eq", left, right);
 	}
 	static Expression* ne (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp ne", left, right);
+		return new ComparisonExpression ("icmp ne", left, right);
 	}
 	static Expression* lt (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp slt", left, right);
+		return new ComparisonExpression ("icmp slt", left, right);
 	}
 	static Expression* gt (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp sgt", left, right);
+		return new ComparisonExpression ("icmp sgt", left, right);
 	}
 	static Expression* le (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp sle", left, right);
+		return new ComparisonExpression ("icmp sle", left, right);
 	}
 	static Expression* ge (Expression* left, Expression* right) {
-		return new BinaryExpression ("icmp sge", left, right);
+		return new ComparisonExpression ("icmp sge", left, right);
 	}
 };
 
@@ -198,22 +241,32 @@ public:
 
 class Function: public Node {
 	Substring name;
+	const Type* return_type;
 	std::vector<Variable*> arguments;
 	std::vector<Node*> nodes;
 	std::vector<Variable*> variables;
 public:
-	Function (const Substring& name): name(name) {}
+	Function (const Substring& name): name(name), return_type(&Type::VOID) {}
 	const Substring& get_name () const {
 		return name;
 	}
 	void append_argument (Variable* argument) {
 		arguments.push_back (argument);
 	}
+	const std::vector<Variable*>& get_arguments () const {
+		return arguments;
+	}
+	void set_return_type (Type* return_type) {
+		this->return_type = return_type;
+	}
+	const Type* get_return_type () const {
+		return return_type;
+	}
 	void append_nodes (const std::vector<Node*>& _nodes) {
 		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
 	}
-	Variable* add_variable () {
-		Variable* variable = new Variable (variables.size());
+	Variable* add_variable (const Type* type) {
+		Variable* variable = new Variable (variables.size(), type);
 		variables.push_back (variable);
 		return variable;
 	}

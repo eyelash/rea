@@ -125,15 +125,15 @@ public:
 		if (parent) return parent->get_variable (name);
 		return nullptr;
 	}
-	virtual Variable* add_variable_to_function () {
-		if (parent) return parent->add_variable_to_function ();
+	virtual Variable* add_variable_to_function (const Type* type) {
+		if (parent) return parent->add_variable_to_function (type);
 		return nullptr;
 	}
 	virtual void add_variable_to_scope (const Substring& name, Variable* variable) {
 		if (parent) parent->add_variable_to_scope (name, variable);
 	}
-	Variable* add_variable (const Substring& name) {
-		Variable* variable = add_variable_to_function ();
+	Variable* add_variable (const Substring& name, const Type* type) {
+		Variable* variable = add_variable_to_function (type);
 		add_variable_to_scope (name, variable);
 		return variable;
 	}
@@ -144,6 +144,12 @@ public:
 	virtual void add_function (Function* function) {
 		if (parent) parent->add_function (function);
 	}
+};
+
+class TypeParser: public Parser {
+public:
+	TypeParser (Parser* parent = nullptr): Parser(parent) {}
+	Type* parse (Cursor& cursor, bool allow_void);
 };
 
 class NumberParser: public Parser {
@@ -209,8 +215,8 @@ class FunctionParser: public Parser {
 public:
 	FunctionParser (Parser* parent = nullptr): Parser(parent) {}
 	Function* parse (Cursor& cursor);
-	Variable* add_variable_to_function () override {
-		return function->add_variable ();
+	Variable* add_variable_to_function (const Type* type) override {
+		return function->add_variable (type);
 	}
 };
 
