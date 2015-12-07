@@ -29,10 +29,15 @@ class Cursor {
 	const char* string;
 	int position;
 	int line;
-	void print_line (FILE* stream) {
+	void print_position (FILE* stream) {
 		for (int i = 0; string[i] != '\n' && string[i] != '\0'; i++)
 			fputc (string[i], stream);
 		fputc ('\n', stream);
+		for (int i = 0; i < position; i++) {
+			if (string[i] == '\t') fputc ('\t', stream);
+			else fputc (' ', stream);
+		}
+		fputs (BOLD "^" RESET "\n", stream);
 	}
 public:
 	Cursor(const char* string): string(string), position(0), line(1) {}
@@ -40,9 +45,7 @@ public:
 		fprintf (stderr, BOLD "line %d: " RED "error: " RESET BOLD, line);
 		functor (stderr);
 		fputs (RESET "\n", stderr);
-		print_line (stderr);
-		for (int i = 0; i < position; i++) fputc (' ', stderr);
-		fputs (BOLD "^" RESET "\n", stderr);
+		print_position (stderr);
 		exit (EXIT_FAILURE);
 	}
 	void error (const char* message) {
