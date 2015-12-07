@@ -38,29 +38,36 @@ class Writer {
 	int label_counter;
 public:
 	Writer (): file(stdout), value_counter(0), label_counter(0) {}
-	Writer& operator << (const char* str) {
+	void write (const char* str) {
 		fputs (str, file);
-		return *this;
 	}
-	Writer& operator << (int n) {
+	void write (int n) {
 		fprintf (file, "%d", n);
-		return *this;
 	}
-	Writer& operator << (const Substring& substring) {
+	void write (const Substring& substring) {
 		substring.write (file);
-		return *this;
 	}
-	Writer& operator << (Printable* printable) {
+	void write (Printable* printable) {
 		printable->print (*this);
-		return *this;
 	}
-	Writer& operator << (const ConstPrintable* printable) {
+	void write (const ConstPrintable* printable) {
 		printable->print (*this);
-		return *this;
 	}
-	Writer& operator << (const ConstPrintable& printable) {
+	void write (const ConstPrintable& printable) {
 		printable.print (*this);
-		return *this;
+	}
+	template <class T0, class... T> void write (const char* s, const T0& v0, const T&... v) {
+		while (true) {
+			if (*s == '\0') return;
+			if (*s == '%') {
+				++s;
+				if (*s != '%') break;
+			}
+			fputc (*s, file);
+			++s;
+		}
+		write (v0);
+		write (s, v...);
 	}
 	int get_next_value () {
 		++value_counter;
@@ -82,10 +89,20 @@ class Expression: public Printable {
 public:
 	virtual void evaluate (Writer&) = 0;
 	virtual void insert (Writer&) = 0;
+	virtual void insert_address (Writer&) {}
 	virtual const Type* get_type () = 0;
 	virtual bool validate () { return true; }
 	void print (Writer& writer) override {
 		insert (writer);
+	}
+	class Address: public ConstPrintable {
+		Expression* expression;
+	public:
+		Address (Expression* expression): expression(expression) {}
+		void print (Writer& writer) const override { expression->insert_address(writer); }
+	};
+	Address get_address () {
+		return Address (this);
 	}
 };
 

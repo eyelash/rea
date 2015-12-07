@@ -29,20 +29,20 @@ public:
 class Void: public Type {
 public:
 	void print (Writer& writer) const override {
-		writer << "void";
+		writer.write ("void");
 	}
 };
 
 class Bool: public Type {
 public:
 	void print (Writer& writer) const override {
-		writer << "i1";
+		writer.write ("i1");
 	}
 };
 
 class Int: public Type {
 public:
 	void print (Writer& writer) const override {
-		writer << "i32";
+		writer.write ("i32");
 	}
 };

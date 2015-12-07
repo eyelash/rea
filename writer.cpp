@@ -21,19 +21,19 @@ Void Type::VOID;
 Bool Type::BOOL;
 Int Type::INT;
 
-void Number::insert (Writer& w) {
-	w << n;
+void Number::insert (Writer& writer) {
+	writer.write (n);
 }
 
 void Variable::evaluate (Writer& writer) {
 	value = writer.get_next_value ();
-	writer << INDENT << "%" << value << " = load " << type << "* %v" << n << "\n";
+	writer.write (INDENT "%%% = load %* %%v%\n", value, type, n);
 }
 void Variable::insert (Writer& writer) {
-	writer << "%" << value;
+	writer.write ("%%%", value);
 }
 void Variable::insert_address (Writer& writer) {
-	writer << "%v" << n;
+	writer.write ("%%v%", n);
 }
 
 void Call::evaluate (Writer& writer) {
@@ -41,20 +41,20 @@ void Call::evaluate (Writer& writer) {
 		argument->evaluate (writer);
 	}
 	value = writer.get_next_value ();
-	writer << INDENT << "%" << value << " = call i32 @" << function->get_name() << "(";
+	writer.write (INDENT "%%% = call i32 @%(", value, function->get_name());
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
-		writer << (*i)->get_type() << " " << *i;
+		writer.write ("% %", (*i)->get_type(), *i);
 		++i;
 	}
 	while (i != arguments.end()) {
-		writer << ", " << (*i)->get_type() << " " << *i;
+		writer.write (", % %", (*i)->get_type(), *i);
 		++i;
 	}
-	writer << ")\n";
+	writer.write (")\n");
 }
 void Call::insert (Writer& writer) {
-	writer << "%" << value;
+	writer.write ("%%%", value);
 }
 bool Call::validate () {
 	if (arguments.size() != function->get_arguments().size()) return false;
@@ -68,18 +68,15 @@ void BinaryExpression::evaluate (Writer& writer) {
 	left->evaluate (writer);
 	right->evaluate (writer);
 	value = writer.get_next_value ();
-	writer << INDENT << "%" << value << " = " << instruction << " i32 " << left << ", " << right;
-	writer << "\n";
+	writer.write (INDENT "%%% = % i32 %, %\n", value, instruction, left, right);
 }
 void BinaryExpression::insert (Writer& writer) {
-	writer << "%" << value;
+	writer.write ("%%%", value);
 }
 
 void Assignment::write (Writer& writer) {
 	expression->evaluate (writer);
-	writer << INDENT << "store " << expression->get_type() << " " << expression << ", " << variable->get_type() << "* ";
-	variable->insert_address (writer);
-	writer << "\n";
+	writer.write (INDENT "store % %, %* %\n", expression->get_type(), expression, variable->get_type(), variable->get_address());
 }
 
 void If::write (Writer& writer) {
@@ -87,17 +84,17 @@ void If::write (Writer& writer) {
 	int endif_label = writer.get_next_label ();
 	
 	condition->evaluate (writer);
-	writer << INDENT << "br i1 " << condition << ", label %l" << if_label << ", label %l" << endif_label << "\n";
+	writer.write (INDENT "br i1 %, label %%l%, label %%l%\n", condition, if_label, endif_label);
 	
 	// if
-	writer << "l" << if_label << ":\n";
+	writer.write ("l%:\n", if_label);
 	for (Node* node: nodes) {
-		writer << node;
+		writer.write (node);
 	}
-	writer << INDENT << "br label %l" << endif_label << "\n";
+	writer.write (INDENT "br label %%l%\n", endif_label);
 	
 	// endif
-	writer << "l" << endif_label << ":\n";
+	writer.write ("l%:\n", endif_label);
 }
 
 void While::write (Writer& writer) {
@@ -105,57 +102,53 @@ void While::write (Writer& writer) {
 	int while_label = writer.get_next_label ();
 	int endwhile_label = writer.get_next_label ();
 	
-	writer << INDENT << "br label %l" << checkwhile_label << "\n";
+	writer.write (INDENT "br label %%l%\n", checkwhile_label);
 	
 	// checkwhile
-	writer << "l" << checkwhile_label << ":\n";
+	writer.write ("l%:\n", checkwhile_label);
 	condition->evaluate (writer);
-	writer << INDENT << "br i1 " << condition << ", label %l" << while_label << ", label %l" << endwhile_label << "\n";
+	writer.write (INDENT "br i1 %, label %%l%, label %%l%\n", condition, while_label, endwhile_label);
 	
 	// while
-	writer << "l" << while_label << ":\n";
+	writer.write ("l%:\n", while_label);
 	for (Node* node: nodes) {
-		writer << node;
+		writer.write (node);
 	}
-	writer << INDENT << "br label %l" << checkwhile_label << "\n";
+	writer.write (INDENT "br label %%l%\n", checkwhile_label);
 	
 	// endwhile
-	writer << "l" << endwhile_label << ":\n";
+	writer.write ("l%:\n", endwhile_label);
 }
 
 void Function::write (Writer& writer) {
-	writer << "define i32 @" << name << "(";
+	writer.write ("define i32 @%(", name);
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
-		writer << (*i)->get_type() << " %a" << (*i)->get_n();
+		writer.write ("% %%a%", (*i)->get_type(), (*i)->get_n());
 		++i;
 	}
 	while (i != arguments.end()) {
-		writer << ", " << (*i)->get_type() << " %a" << (*i)->get_n();
+		writer.write (", % %%a%", (*i)->get_type(), (*i)->get_n());
 		++i;
 	}
-	writer << ") nounwind {\n";
+	writer.write (") nounwind {\n");
 	writer.reset ();
 	for (Variable* variable: variables) {
-		writer << INDENT;
-		variable->insert_address (writer);
-		writer << " = alloca " << variable->get_type() << "\n";
+		writer.write (INDENT "% = alloca %\n", variable->get_address(), variable->get_type());
 	}
 	for (Variable* argument: arguments) {
-		writer << INDENT << "store " << argument->get_type() << " %a" << argument->get_n() << ", " << argument->get_type() << "* ";
-		argument->insert_address (writer);
-		writer << "\n";
+		writer.write (INDENT "store % %%a%, %* %\n", argument->get_type(), argument->get_n(), argument->get_type(), argument->get_address());
 	}
 	for (Node* node: nodes) {
-		writer << node;
+		writer.write (node);
 	}
-	writer << INDENT << "ret i32 0\n";
-	writer << "}\n\n";
+	writer.write (INDENT "ret i32 0\n");
+	writer.write ("}\n\n");
 }
 
 void Program::write (Writer& writer) {
-	writer << "declare i32 @print(i32)" << "\n\n";
+	writer.write ("declare i32 @print(i32)\n\n");
 	for (Node* node: nodes) {
-		writer << node;
+		writer.write (node);
 	}
 }
