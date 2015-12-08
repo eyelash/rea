@@ -147,6 +147,13 @@ public:
 	virtual void add_function (Function* function) {
 		if (parent) parent->add_function (function);
 	}
+	virtual const Type* get_return_type () {
+		if (parent) return parent->get_return_type ();
+		else return nullptr;
+	}
+	virtual void set_returned () {
+		if (parent) parent->set_returned ();
+	}
 };
 
 class TypeParser: public Parser {
@@ -186,10 +193,11 @@ public:
 };
 
 class BlockParser: public Parser {
+	Block* block;
 	std::map<Substring, Variable*> variables;
 public:
 	BlockParser (Parser* parent = nullptr): Parser(parent) {}
-	std::vector<Node*> parse (Cursor& cursor);
+	Block* parse (Cursor& cursor);
 	Variable* get_variable (const Substring& name) override {
 		auto i = variables.find (name);
 		if (i != variables.end())
@@ -198,6 +206,9 @@ public:
 	}
 	void add_variable_to_scope (const Substring& name, Variable* variable) override {
 		variables[name] = variable;
+	}
+	void set_returned () override {
+		block->returns = true;
 	}
 };
 
@@ -220,6 +231,9 @@ public:
 	Function* parse (Cursor& cursor);
 	Variable* add_variable_to_function (const Type* type) override {
 		return function->add_variable (type);
+	}
+	const Type* get_return_type () override {
+		return function->get_return_type ();
 	}
 };
 

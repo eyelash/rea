@@ -25,6 +25,10 @@ void Number::insert (Writer& writer) {
 	writer.write (n);
 }
 
+void BooleanLiteral::insert (Writer& writer) {
+	writer.write (value ? 1 : 0);
+}
+
 void Variable::evaluate (Writer& writer) {
 	value = writer.get_next_value ();
 	writer.write (INDENT "%%% = load %* %%v%\n", value, type, n);
@@ -40,8 +44,13 @@ void Call::evaluate (Writer& writer) {
 	for (Expression* argument: arguments) {
 		argument->evaluate (writer);
 	}
-	value = writer.get_next_value ();
-	writer.write (INDENT "%%% = call i32 @%(", value, function->get_name());
+	if (function->get_return_type() == &Type::VOID) {
+		writer.write (INDENT "call void @%(", function->get_name());
+	}
+	else {
+		value = writer.get_next_value ();
+		writer.write (INDENT "%%% = call % @%(", value, function->get_return_type(), function->get_name());
+	}
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
 		writer.write ("% %", (*i)->get_type(), *i);
@@ -88,10 +97,8 @@ void If::write (Writer& writer) {
 	
 	// if
 	writer.write ("l%:\n", if_label);
-	for (Node* node: nodes) {
-		writer.write (node);
-	}
-	writer.write (INDENT "br label %%l%\n", endif_label);
+	writer.write (if_block);
+	if (!if_block->returns) writer.write (INDENT "br label %%l%\n", endif_label);
 	
 	// endif
 	writer.write ("l%:\n", endif_label);
@@ -111,17 +118,23 @@ void While::write (Writer& writer) {
 	
 	// while
 	writer.write ("l%:\n", while_label);
-	for (Node* node: nodes) {
-		writer.write (node);
-	}
-	writer.write (INDENT "br label %%l%\n", checkwhile_label);
+	writer.write (block);
+	if (!block->returns) writer.write (INDENT "br label %%l%\n", checkwhile_label);
 	
 	// endwhile
 	writer.write ("l%:\n", endwhile_label);
 }
 
+void Return::write (Writer& writer) {
+	if (expression) {
+		expression->evaluate (writer);
+		writer.write (INDENT "ret % %\n", expression->get_type(), expression);
+	}
+	else writer.write (INDENT "ret void\n");
+}
+
 void Function::write (Writer& writer) {
-	writer.write ("define i32 @%(", name);
+	writer.write ("define % @%(", return_type, name);
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
 		writer.write ("% %%a%", (*i)->get_type(), (*i)->get_n());
@@ -139,15 +152,19 @@ void Function::write (Writer& writer) {
 	for (Variable* argument: arguments) {
 		writer.write (INDENT "store % %%a%, %* %\n", argument->get_type(), argument->get_n(), argument->get_type(), argument->get_address());
 	}
-	for (Node* node: nodes) {
-		writer.write (node);
-	}
-	writer.write (INDENT "ret i32 0\n");
+	writer.write (block);
+	if (!block->returns) writer.write (INDENT "ret void\n");
 	writer.write ("}\n\n");
 }
 
+void Block::write (Writer& writer) {
+	for (Node* node: nodes) {
+		writer.write (node);
+	}
+}
+
 void Program::write (Writer& writer) {
-	writer.write ("declare i32 @print(i32)\n\n");
+	writer.write ("declare void @print(i32)\n\n");
 	for (Node* node: nodes) {
 		writer.write (node);
 	}

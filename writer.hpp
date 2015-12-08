@@ -117,6 +117,17 @@ public:
 	}
 };
 
+class BooleanLiteral: public Expression {
+	bool value;
+public:
+	BooleanLiteral (bool value): value(value) {}
+	void evaluate (Writer&) {}
+	void insert (Writer& writer) override;
+	const Type* get_type () override {
+		return &Type::BOOL;
+	}
+};
+
 class Variable: public Expression {
 	int n;
 	const Type* type;
@@ -130,25 +141,6 @@ public:
 	const Type* get_type () override {
 		return type;
 	}
-};
-
-class Function;
-
-class Call: public Expression {
-	Function* function;
-	std::vector<Expression*> arguments;
-	int value;
-public:
-	Call (Function* function): function(function) {}
-	void append_argument (Expression* argument) {
-		arguments.push_back (argument);
-	}
-	void evaluate (Writer& writer);
-	void insert (Writer& writer);
-	const Type* get_type () override {
-		return &Type::INT;
-	}
-	bool validate () override;
 };
 
 class BinaryExpression: public Expression {
@@ -234,24 +226,42 @@ public:
 	void write (Writer& writer) override;
 };
 
-class If: public Node {
-	Expression* condition;
+class Return: public Node {
+	Expression* expression;
+public:
+	Return (Expression* expression = nullptr): expression(expression) {}
+	void write (Writer& writer) override;
+};
+
+class Block: public Node {
 	std::vector<Node*> nodes;
 public:
+	bool returns;
+	Block (): returns(false) {}
+	void append_node (Node* node) {
+		nodes.push_back (node);
+	}
+	void write (Writer& writer) override;
+};
+
+class If: public Node {
+	Expression* condition;
+	Block* if_block;
+public:
 	If (Expression* condition): condition(condition) {}
-	void append_nodes (const std::vector<Node*>& _nodes) {
-		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	void set_if_block (Block* block) {
+		if_block = block;
 	}
 	void write (Writer& writer) override;
 };
 
 class While: public Node {
 	Expression* condition;
-	std::vector<Node*> nodes;
+	Block* block;
 public:
 	While (Expression* condition): condition(condition) {}
-	void append_nodes (const std::vector<Node*>& _nodes) {
-		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	void set_block (Block* block) {
+		this->block = block;
 	}
 	void write (Writer& writer) override;
 };
@@ -260,7 +270,7 @@ class Function: public Node {
 	Substring name;
 	const Type* return_type;
 	std::vector<Variable*> arguments;
-	std::vector<Node*> nodes;
+	Block* block;
 	std::vector<Variable*> variables;
 public:
 	Function (const Substring& name): name(name), return_type(&Type::VOID) {}
@@ -273,14 +283,14 @@ public:
 	const std::vector<Variable*>& get_arguments () const {
 		return arguments;
 	}
-	void set_return_type (Type* return_type) {
+	void set_return_type (const Type* return_type) {
 		this->return_type = return_type;
 	}
 	const Type* get_return_type () const {
 		return return_type;
 	}
-	void append_nodes (const std::vector<Node*>& _nodes) {
-		nodes.insert (nodes.end(), _nodes.begin(), _nodes.end());
+	void set_block (Block* block) {
+		this->block = block;
 	}
 	Variable* add_variable (const Type* type) {
 		Variable* variable = new Variable (variables.size(), type);
@@ -288,6 +298,23 @@ public:
 		return variable;
 	}
 	void write (Writer& writer) override;
+};
+
+class Call: public Expression {
+	Function* function;
+	std::vector<Expression*> arguments;
+	int value;
+public:
+	Call (Function* function): function(function) {}
+	void append_argument (Expression* argument) {
+		arguments.push_back (argument);
+	}
+	void evaluate (Writer& writer);
+	void insert (Writer& writer);
+	const Type* get_type () override {
+		return function->get_return_type ();
+	}
+	bool validate () override;
 };
 
 class Program: public Node {

@@ -17,7 +17,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include <stdio.h>
 
-int print (int n) {
+void print (int n) {
 	printf ("%d\n", n);
-	return 0;
 }

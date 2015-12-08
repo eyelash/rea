@@ -71,6 +71,12 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 			cursor.expect (")");
 			return expression;
 		}
+		else if (cursor.starts_with("false")) {
+			return new BooleanLiteral (false);
+		}
+		else if (cursor.starts_with("true")) {
+			return new BooleanLiteral (true);
+		}
 		else if (cursor[0].is_numeric()) {
 			// number
 			return NumberParser(this).parse (cursor);
@@ -152,22 +158,34 @@ Node* LineParser::parse (Cursor& cursor) {
 	else if (cursor.starts_with("while", false)) {
 		return WhileParser(this).parse (cursor);
 	}
+	else if (cursor.starts_with("return")) {
+		const Type* return_type = get_return_type ();
+		Expression* expression = nullptr;
+		if (return_type != &Type::VOID) {
+			cursor.skip_whitespace ();
+			expression = ExpressionParser(this).parse (cursor);
+			if (expression->get_type() != return_type)
+				cursor.error ("invalid return type");
+		}
+		set_returned ();
+		return new Return (expression);
+	}
 	else {
 		return new ExpressionNode (ExpressionParser(this).parse (cursor));
 	}
 }
 
-std::vector<Node*> BlockParser::parse (Cursor& cursor) {
-	std::vector<Node*> result;
+Block* BlockParser::parse (Cursor& cursor) {
+	block = new Block ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
-	while (*cursor != '}') {
+	while (*cursor != '}' && !block->returns && *cursor != '\0') {
 		Node* node = LineParser(this).parse (cursor);
-		result.push_back (node);
+		block->append_node (node);
 		cursor.skip_whitespace ();
 	}
 	cursor.expect ("}");
-	return result;
+	return block;
 }
 
 If* IfParser::parse (Cursor& cursor) {
@@ -177,8 +195,8 @@ If* IfParser::parse (Cursor& cursor) {
 	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	If* result = new If (condition);
 	cursor.skip_whitespace ();
-	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
-	result->append_nodes (nodes);
+	Block* if_block = BlockParser(this).parse (cursor);
+	result->set_if_block (if_block);
 	return result;
 }
 
@@ -189,8 +207,8 @@ While* WhileParser::parse (Cursor& cursor) {
 	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	While* result = new While (condition);
 	cursor.skip_whitespace ();
-	std::vector<Node*> nodes = BlockParser(this).parse (cursor);
-	result->append_nodes (nodes);
+	Block* block = BlockParser(this).parse (cursor);
+	result->set_block (block);
 	return result;
 }
 
@@ -229,16 +247,19 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	}
 	
 	// code block
-	std::vector<Node*> nodes = block_parser.parse (cursor);
-	function->append_nodes (nodes);
+	Block* block = block_parser.parse (cursor);
+	if (function->get_return_type() != &Type::VOID && !block->returns)
+		cursor.error ("missing return statement");
+	function->set_block (block);
 	Parser::add_function (function);
 	return function;
 }
 
-static Function* create_function (const char* name, std::initializer_list<const Type*> arguments) {
+static Function* create_function (const char* name, std::initializer_list<const Type*> arguments, const Type* return_type = &Type::VOID) {
 	Function* function = new Function (name);
 	for (const Type* type: arguments)
 		function->append_argument (new Variable (0, type));
+	function->set_return_type (return_type);
 	return function;
 }
 
