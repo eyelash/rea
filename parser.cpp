@@ -248,13 +248,13 @@ Function* FunctionParser::parse (Cursor& cursor) {
 		function->set_return_type (return_type);
 		cursor.skip_whitespace ();
 	}
+	add_function (function);
 	
 	// code block
 	Block* block = block_parser.parse (cursor);
 	if (function->get_return_type() != &Type::VOID && !block->returns)
 		cursor.error ("missing return statement");
 	function->set_block (block);
-	Parser::add_function (function);
 	return function;
 }
 
