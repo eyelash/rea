@@ -6,11 +6,11 @@ Just a toy compiler
 ```
 func isPrime(n: Int): Bool {
     var i = 2
-    while (i * i <= n) {
-        if (n % i == 0) {
+    while i * i <= n {
+        if n % i == 0 {
             return false
         }
-        var i = i + 1
+        i = i + 1
     }
     return true
 }
@@ -19,12 +19,12 @@ func main() {
     // print the first 10 primes greater than one million
     var n = 0
     var i = 1000000
-    while (n < 10) {
-        if (isPrime(i)) {
+    while n < 10 {
+        if isPrime(i) {
             print(i)
-            var n = n + 1
+            n = n + 1
         }
-        var i = i + 1
+        i = i + 1
     }
 }
 ```

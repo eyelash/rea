@@ -110,8 +110,8 @@ class Number: public Expression {
 	int n;
 public:
 	Number (int n): n(n) {}
-	void evaluate (Writer&) {}
-	void insert (Writer& w);
+	void evaluate (Writer&) override {}
+	void insert (Writer& w) override;
 	const Type* get_type () override {
 		return &Type::INT;
 	}
@@ -121,7 +121,7 @@ class BooleanLiteral: public Expression {
 	bool value;
 public:
 	BooleanLiteral (bool value): value(value) {}
-	void evaluate (Writer&) {}
+	void evaluate (Writer&) override {}
 	void insert (Writer& writer) override;
 	const Type* get_type () override {
 		return &Type::BOOL;
@@ -135,11 +135,29 @@ class Variable: public Expression {
 public:
 	Variable (int n, const Type* type): n(n), type(type) {}
 	int get_n () const { return n; }
-	void evaluate (Writer& writer);
-	void insert (Writer& writer);
+	void evaluate (Writer& writer) override;
+	void insert (Writer& writer) override;
 	void insert_address (Writer& writer);
 	const Type* get_type () override {
 		return type;
+	}
+};
+
+class Assignment: public Expression {
+	Expression* left;
+	Expression* right;
+public:
+	Assignment (Expression* left, Expression* right): left(left), right(right) {}
+	void evaluate (Writer& writer) override;
+	void insert (Writer& writer) override;
+	const Type* get_type () override {
+		return right->get_type ();
+	}
+	bool validate () override {
+		return left->get_type() == right->get_type();
+	}
+	static Expression* create (Expression* left, Expression* right) {
+		return new Assignment (left, right);
 	}
 };
 
@@ -150,8 +168,8 @@ class BinaryExpression: public Expression {
 	int value;
 public:
 	BinaryExpression (const char* instruction, Expression* left, Expression* right): instruction(instruction), left(left), right(right) {}
-	void evaluate (Writer& writer);
-	void insert (Writer& writer);
+	void evaluate (Writer& writer) override;
+	void insert (Writer& writer) override;
 	const Type* get_type () override {
 		return left->get_type ();
 	}
@@ -216,14 +234,6 @@ public:
 	void write (Writer& writer) override {
 		expression->evaluate (writer);
 	}
-};
-
-class Assignment: public Node {
-	Variable* variable;
-	Expression* expression;
-public:
-	Assignment (Variable* variable, Expression* expression): variable(variable), expression(expression) {}
-	void write (Writer& writer) override;
 };
 
 class Return: public Node {

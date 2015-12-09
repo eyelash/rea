@@ -57,13 +57,14 @@ struct Operator {
 typedef BinaryExpression BE;
 typedef ComparisonExpression CE;
 static Operator operators[][7] = {
+	{{"=", Assignment::create}, NULL},
 	{{"==", CE::eq}, {"!=", CE::ne}, {"<=", CE::le}, {">=", CE::ge}, {"<", CE::lt}, {">", CE::gt}, NULL},
 	{{"+", BE::add}, {"-", BE::sub}, NULL},
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
 
 Expression* ExpressionParser::parse (Cursor& cursor, int level) {
-	if (level == 3) {
+	if (level == 4) {
 		if (cursor.starts_with("(")) {
 			cursor.skip_whitespace ();
 			Expression* expression = parse (cursor);
@@ -134,23 +135,24 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	return left;
 }
 
-Assignment* AssignmentParser::parse (Cursor& cursor) {
+Node* VariableDefinitionParser::parse (Cursor& cursor) {
 	cursor.expect ("var");
 	cursor.skip_whitespace ();
 	Substring name = IdentifierParser(this).parse (cursor);
+	if (get_variable(name)) cursor.error ("variable already defined");
 	cursor.skip_whitespace ();
 	cursor.expect ("=");
 	cursor.skip_whitespace ();
 	Expression* expression = ExpressionParser(this).parse (cursor);
-	Variable* variable = Parser::get_variable (name);
-	if (!variable)
-		variable = Parser::add_variable (name, expression->get_type());
-	return new Assignment (variable, expression);
+	if (expression->get_type() == &Type::VOID) cursor.error ("variables of type Void are not allowed");
+	Variable* variable = add_variable (name, expression->get_type());
+	Assignment* assignment = new Assignment (variable, expression);
+	return new ExpressionNode (assignment);
 }
 
 Node* LineParser::parse (Cursor& cursor) {
 	if (cursor.starts_with("var", false)) {
-		return AssignmentParser(this).parse (cursor);
+		return VariableDefinitionParser(this).parse (cursor);
 	}
 	else if (cursor.starts_with("if", false)) {
 		return IfParser(this).parse (cursor);
@@ -232,6 +234,7 @@ Function* FunctionParser::parse (Cursor& cursor) {
 		cursor.skip_whitespace ();
 		const Type* argument_type = TypeParser(this).parse (cursor, false);
 		Variable* argument = block_parser.add_variable (argument_name, argument_type);
+		if (!argument) cursor.error ("duplicate argument name");
 		function->append_argument (argument);
 		cursor.skip_whitespace ();
 	}

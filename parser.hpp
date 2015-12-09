@@ -180,10 +180,10 @@ public:
 	Expression* parse (Cursor& cursor, int level = 0);
 };
 
-class AssignmentParser: public Parser {
+class VariableDefinitionParser: public Parser {
 public:
-	AssignmentParser (Parser* parent = nullptr): Parser(parent) {}
-	Assignment* parse (Cursor& cursor);
+	VariableDefinitionParser (Parser* parent = nullptr): Parser(parent) {}
+	Node* parse (Cursor& cursor);
 };
 
 class LineParser: public Parser {

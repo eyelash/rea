@@ -40,6 +40,14 @@ void Variable::insert_address (Writer& writer) {
 	writer.write ("%%v%", n);
 }
 
+void Assignment::evaluate (Writer& writer) {
+	right->evaluate (writer);
+	writer.write (INDENT "store % %, %* %\n", right->get_type(), right, left->get_type(), left->get_address());
+}
+void Assignment::insert (Writer& writer) {
+	right->insert (writer);
+}
+
 void Call::evaluate (Writer& writer) {
 	for (Expression* argument: arguments) {
 		argument->evaluate (writer);
@@ -81,11 +89,6 @@ void BinaryExpression::evaluate (Writer& writer) {
 }
 void BinaryExpression::insert (Writer& writer) {
 	writer.write ("%%%", value);
-}
-
-void Assignment::write (Writer& writer) {
-	expression->evaluate (writer);
-	writer.write (INDENT "store % %, %* %\n", expression->get_type(), expression, variable->get_type(), variable->get_address());
 }
 
 void If::write (Writer& writer) {
