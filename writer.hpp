@@ -18,6 +18,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "foundation.hpp"
 #include <cstdio>
 #include <vector>
+#include <map>
 
 #define INDENT "  "
 
@@ -276,14 +277,13 @@ public:
 	void write (Writer& writer) override;
 };
 
-class Function: public Node {
+class FunctionDeclaration {
+protected:
 	Substring name;
-	const Type* return_type;
 	std::vector<Variable*> arguments;
-	Block* block;
-	std::vector<Variable*> variables;
+	const Type* return_type;
 public:
-	Function (const Substring& name): name(name), return_type(&Type::VOID) {}
+	FunctionDeclaration (const Substring& name): name(name), return_type(&Type::VOID) {}
 	const Substring& get_name () const {
 		return name;
 	}
@@ -299,6 +299,14 @@ public:
 	const Type* get_return_type () const {
 		return return_type;
 	}
+	void write (Writer& writer);
+};
+
+class Function: public FunctionDeclaration {
+	Block* block;
+	std::vector<Variable*> variables;
+public:
+	Function (const Substring& name): FunctionDeclaration(name) {}
 	void set_block (Block* block) {
 		this->block = block;
 	}
@@ -307,15 +315,15 @@ public:
 		variables.push_back (variable);
 		return variable;
 	}
-	void write (Writer& writer) override;
+	void write (Writer& writer);
 };
 
 class Call: public Expression {
-	Function* function;
+	FunctionDeclaration* function;
 	std::vector<Expression*> arguments;
 	int value;
 public:
-	Call (Function* function): function(function) {}
+	Call (FunctionDeclaration* function): function(function) {}
 	void append_argument (Expression* argument) {
 		arguments.push_back (argument);
 	}
@@ -327,11 +335,52 @@ public:
 	bool validate () override;
 };
 
-class Program: public Node {
-	std::vector<Node*> nodes;
+class Class: public Type {
+	Substring name;
+	std::map<Substring, Variable*> attributes;
 public:
-	void append_node (Node* node) {
-		nodes.push_back (node);
+	Class (const Substring& name): name(name) {}
+	const Substring& get_name () const {
+		return name;
+	}
+	Variable* create_attribute (const Type* type) {
+		return new Variable (attributes.size(), type);
+	}
+	void add_attribute (const Substring& name, Variable* variable) {
+		attributes[name] = variable;
+	}
+	void write (Writer& writer);
+	void insert (Writer& writer) const override;
+};
+
+class Program: public Node {
+	std::vector<FunctionDeclaration*> function_declarations;
+	std::vector<Function*> functions;
+	std::vector<Class*> classes;
+public:
+	void add_function_declaration (FunctionDeclaration* function_declaration) {
+		function_declarations.push_back (function_declaration);
+	}
+	void add_function (Function* function) {
+		functions.push_back (function);
+	}
+	FunctionDeclaration* get_function (const Substring& name) {
+		for (FunctionDeclaration* function: function_declarations) {
+			if (function->get_name() == name) return function;
+		}
+		for (Function* function: functions) {
+			if (function->get_name() == name) return function;
+		}
+		return nullptr;
+	}
+	void add_class (Class* _class) {
+		classes.push_back (_class);
+	}
+	Class* get_class (const Substring& name) {
+		for (Class* _class: classes) {
+			if (_class->get_name() == name) return _class;
+		}
+		return nullptr;
 	}
 	void write (Writer& writer) override;
 };

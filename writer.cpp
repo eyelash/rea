@@ -136,6 +136,20 @@ void Return::write (Writer& writer) {
 	else writer.write (INDENT "ret void\n");
 }
 
+void FunctionDeclaration::write (Writer& writer) {
+	writer.write ("declare % @%(", return_type, name);
+	auto i = arguments.begin ();
+	if (i != arguments.end()) {
+		writer.write ((*i)->get_type());
+		++i;
+		while (i != arguments.end()) {
+			writer.write (", %", (*i)->get_type());
+			++i;
+		}
+	}
+	writer.write (")\n\n");
+}
+
 void Function::write (Writer& writer) {
 	writer.write ("define % @%(", return_type, name);
 	auto i = arguments.begin ();
@@ -166,9 +180,27 @@ void Block::write (Writer& writer) {
 	}
 }
 
-void Program::write (Writer& writer) {
-	writer.write ("declare void @print(i32)\n\n");
-	for (Node* node: nodes) {
-		writer.write (node);
+void Class::write (Writer& writer) {
+	writer.write ("%%% = type {\n", name);
+	auto i = attributes.begin ();
+	if (i != attributes.end()) {
+		writer.write (INDENT "%", i->second->get_type());
+		++i;
+		while (i != attributes.end()) {
+			writer.write (",\n" INDENT "%", i->second->get_type());
+			++i;
+		}
 	}
+	writer.write ("\n}\n\n");
+}
+void Class::insert (Writer& writer) const {
+	writer.write ("%%%", name);
+}
+
+void Program::write (Writer& writer) {
+	for (FunctionDeclaration* function_declaration: function_declarations) function_declaration->write (writer);
+	
+	for (Class* _class: classes) _class->write (writer);
+	
+	for (Function* function: functions) function->write (writer);
 }

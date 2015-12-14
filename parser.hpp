@@ -140,7 +140,7 @@ public:
 		add_variable_to_scope (name, variable);
 		return variable;
 	}
-	virtual Function* get_function (const Substring& name) {
+	virtual FunctionDeclaration* get_function (const Substring& name) {
 		if (parent) return parent->get_function (name);
 		return nullptr;
 	}
@@ -153,6 +153,10 @@ public:
 	}
 	virtual void set_returned () {
 		if (parent) parent->set_returned ();
+	}
+	virtual Class* get_class (const Substring& name) {
+		if (parent) return parent->get_class (name);
+		return nullptr;
 	}
 };
 
@@ -237,19 +241,31 @@ public:
 	}
 };
 
+class ClassParser: public Parser {
+	Class* _class;
+public:
+	ClassParser (Parser* parent): Parser(parent) {}
+	Class* parse (Cursor& cursor);
+	Variable* add_variable_to_function (const Type* type) override {
+		return _class->create_attribute (type);
+	}
+	void add_variable_to_scope (const Substring& name, Variable* variable) override {
+		_class->add_attribute (name, variable);
+	}
+};
+
 class ProgramParser: public Parser {
 	Program* program;
-	std::map<Substring, Function*> functions;
 public:
 	ProgramParser (Parser* parent = nullptr): Parser(parent) {}
 	Program* parse (Cursor& cursor);
-	Function* get_function (const Substring& name) override {
-		auto i = functions.find (name);
-		if (i != functions.end())
-			return i->second;
-		return Parser::get_function (name);
+	FunctionDeclaration* get_function (const Substring& name) override {
+		return program->get_function (name);
 	}
 	void add_function (Function* function) override {
-		functions[function->get_name()] = function;
+		program->add_function (function);
+	}
+	Class* get_class (const Substring& name) override {
+		return program->get_class (name);
 	}
 };

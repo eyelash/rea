@@ -21,6 +21,10 @@ class Int;
 
 class Type: public ConstPrintable {
 public:
+	virtual void insert (Writer& writer) const = 0;
+	void print (Writer& writer) const override {
+		insert (writer);
+	}
 	static Void VOID;
 	static Bool BOOL;
 	static Int INT;
@@ -28,21 +32,21 @@ public:
 
 class Void: public Type {
 public:
-	void print (Writer& writer) const override {
+	void insert (Writer& writer) const override {
 		writer.write ("void");
 	}
 };
 
 class Bool: public Type {
 public:
-	void print (Writer& writer) const override {
+	void insert (Writer& writer) const override {
 		writer.write ("i1");
 	}
 };
 
 class Int: public Type {
 public:
-	void print (Writer& writer) const override {
+	void insert (Writer& writer) const override {
 		writer.write ("i32");
 	}
 };

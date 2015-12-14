@@ -88,7 +88,7 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 			if (variable) {
 				return variable;
 			}
-			Function* function = Parser::get_function (identifier);
+			FunctionDeclaration* function = Parser::get_function (identifier);
 			if (function) {
 				cursor.skip_whitespace ();
 				cursor.expect ("(");
@@ -258,8 +258,24 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	return function;
 }
 
-static Function* create_function (const char* name, std::initializer_list<const Type*> arguments, const Type* return_type = &Type::VOID) {
-	Function* function = new Function (name);
+Class* ClassParser::parse (Cursor& cursor) {
+	cursor.expect ("class");
+	cursor.skip_whitespace ();
+	Substring name = IdentifierParser(this).parse (cursor);
+	_class = new Class (name);
+	cursor.skip_whitespace ();
+	cursor.expect ("{");
+	cursor.skip_whitespace ();
+	while (*cursor != '}' && *cursor != '\0') {
+		VariableDefinitionParser(this).parse (cursor);
+		cursor.skip_whitespace ();
+	}
+	cursor.expect ("}");
+	return _class;
+}
+
+static FunctionDeclaration* create_function (const char* name, std::initializer_list<const Type*> arguments, const Type* return_type = &Type::VOID) {
+	FunctionDeclaration* function = new FunctionDeclaration (name);
 	for (const Type* type: arguments)
 		function->append_argument (new Variable (0, type));
 	function->set_return_type (return_type);
@@ -268,11 +284,17 @@ static Function* create_function (const char* name, std::initializer_list<const 
 
 Program* ProgramParser::parse (Cursor& cursor) {
 	program = new Program ();
-	add_function (create_function("print", {&Type::INT}));
+	program->add_function_declaration (create_function("print", {&Type::INT}));
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
-		Node* node = FunctionParser(this).parse (cursor);
-		program->append_node (node);
+		if (cursor.starts_with("func", false)) {
+			Function* function = FunctionParser(this).parse (cursor);
+			//program->add_function (function);
+		}
+		else {
+			Class* _class = ClassParser(this).parse (cursor);
+			program->add_class (_class);
+		}
 		cursor.skip_whitespace ();
 	}
 	return program;
