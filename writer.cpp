@@ -40,7 +40,34 @@ void Variable::insert_address (Writer& writer) {
 	writer.write ("%%v%", n);
 }
 
+void Instantiation::evaluate (Writer& writer) {
+	value = writer.get_next_value ();
+	writer.write (INDENT "%%% = alloca %%%\n", value, _class->get_name());
+}
+void Instantiation::insert (Writer& writer) {
+	writer.write ("%%%", value);
+}
+
+void AttributeAccess::evaluate (Writer& writer) {
+	evaluate_address (writer);
+	value = writer.get_next_value ();
+	writer.write (INDENT "%%% = load %* %%%\n", value, get_type(), address);
+}
+void AttributeAccess::insert (Writer& writer) {
+	writer.write ("%%%", value);
+}
+void AttributeAccess::evaluate_address (Writer& writer) {
+	expression->evaluate (writer);
+	int index = expression->get_type()->get_class()->get_attribute(name)->get_n ();
+	address = writer.get_next_value ();
+	writer.write (INDENT "%%% = getelementptr % %, i32 0, i32 %\n", address, expression->get_type(), expression, index);
+}
+void AttributeAccess::insert_address (Writer& writer) {
+	writer.write ("%%%", address);
+}
+
 void Assignment::evaluate (Writer& writer) {
+	left->evaluate_address (writer);
 	right->evaluate (writer);
 	writer.write (INDENT "store % %, %* %\n", right->get_type(), right, left->get_type(), left->get_address());
 }
@@ -194,7 +221,7 @@ void Class::write (Writer& writer) {
 	writer.write ("\n}\n\n");
 }
 void Class::insert (Writer& writer) const {
-	writer.write ("%%%", name);
+	writer.write ("%%%*", name);
 }
 
 void Program::write (Writer& writer) {

@@ -90,6 +90,7 @@ class Expression: public Printable {
 public:
 	virtual void evaluate (Writer&) = 0;
 	virtual void insert (Writer&) = 0;
+	virtual void evaluate_address (Writer&) {}
 	virtual void insert_address (Writer&) {}
 	virtual const Type* get_type () = 0;
 	virtual bool validate () { return true; }
@@ -349,8 +350,44 @@ public:
 	void add_attribute (const Substring& name, Variable* variable) {
 		attributes[name] = variable;
 	}
+	Variable* get_attribute (const Substring& name) const {
+		auto i = attributes.find (name);
+		if (i != attributes.end()) return i->second;
+		return nullptr;
+	}
 	void write (Writer& writer);
 	void insert (Writer& writer) const override;
+	const Class* get_class () const override {
+		return this;
+	}
+};
+
+class Instantiation: public Expression {
+	Class* _class;
+	int value;
+public:
+	Instantiation (Class* _class): _class(_class) {}
+	void evaluate (Writer& writer) override;
+	void insert (Writer& writer) override;
+	const Type* get_type () override {
+		return _class;
+	}
+};
+
+class AttributeAccess: public Expression {
+	Expression* expression;
+	Substring name;
+	int address;
+	int value;
+public:
+	AttributeAccess (Expression* expression, const Substring& name): expression(expression), name(name) {}
+	void evaluate (Writer& writer) override;
+	void insert (Writer& writer) override;
+	void evaluate_address (Writer& writer) override;
+	void insert_address (Writer& writer) override;
+	const Type* get_type () override {
+		return expression->get_type()->get_class()->get_attribute(name)->get_type();
+	}
 };
 
 class Program: public Node {

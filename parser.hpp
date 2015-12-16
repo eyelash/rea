@@ -163,7 +163,7 @@ public:
 class TypeParser: public Parser {
 public:
 	TypeParser (Parser* parent = nullptr): Parser(parent) {}
-	Type* parse (Cursor& cursor, bool allow_void);
+	const Type* parse (Cursor& cursor, bool allow_void);
 };
 
 class NumberParser: public Parser {
@@ -182,6 +182,7 @@ class ExpressionParser: public Parser {
 public:
 	ExpressionParser (Parser* parent = nullptr): Parser(parent) {}
 	Expression* parse (Cursor& cursor, int level = 0);
+	Expression* parse_last (Cursor& cursor);
 };
 
 class VariableDefinitionParser: public Parser {
@@ -251,6 +252,9 @@ public:
 	}
 	void add_variable_to_scope (const Substring& name, Variable* variable) override {
 		_class->add_attribute (name, variable);
+	}
+	Variable* get_variable (const Substring& name) override {
+		return _class->get_attribute (name);
 	}
 };
 

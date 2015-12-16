@@ -18,10 +18,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 class Void;
 class Bool;
 class Int;
+class Class;
 
 class Type: public ConstPrintable {
 public:
 	virtual void insert (Writer& writer) const = 0;
+	virtual const Class* get_class () const { return nullptr; }
 	void print (Writer& writer) const override {
 		insert (writer);
 	}

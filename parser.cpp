@@ -17,13 +17,16 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
-Type* TypeParser::parse (Cursor& cursor, bool allow_void) {
+const Type* TypeParser::parse (Cursor& cursor, bool allow_void) {
 	if (allow_void && cursor.starts_with("Void"))
 		return &Type::VOID;
 	if (cursor.starts_with("Bool"))
 		return &Type::BOOL;
 	if (cursor.starts_with("Int"))
 		return &Type::INT;
+	Substring identifier = IdentifierParser(this).parse (cursor);
+	const Type* type = get_class (identifier);
+	if (type) return type;
 	cursor.error ("unknown type");
 	return nullptr;
 }
@@ -39,9 +42,9 @@ Number* NumberParser::parse (Cursor& cursor) {
 }
 
 Substring IdentifierParser::parse (Cursor& cursor) {
-	if (!cursor[0].is_alphabetic()) cursor.error ("expected alphabetic character");
+	if (!(cursor[0].is_alphabetic() || *cursor == '_')) cursor.error ("expected alphabetic character");
 	int i = 0;
-	while (cursor[i].is_alphanumeric()) {
+	while (cursor[i].is_alphanumeric() || cursor[i] == '_') {
 		++i;
 	}
 	Substring result = cursor.get_substring (i);
@@ -63,57 +66,88 @@ static Operator operators[][7] = {
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
 
+Expression* ExpressionParser::parse_last (Cursor& cursor) {
+	if (cursor.starts_with("(")) {
+		cursor.skip_whitespace ();
+		Expression* expression = parse (cursor);
+		cursor.skip_whitespace ();
+		cursor.expect (")");
+		return expression;
+	}
+	else if (cursor.starts_with("false")) {
+		return new BooleanLiteral (false);
+	}
+	else if (cursor.starts_with("true")) {
+		return new BooleanLiteral (true);
+	}
+	else if (cursor[0].is_numeric()) {
+		return NumberParser(this).parse (cursor);
+	}
+	else if (cursor[0].is_alphabetic() || *cursor == '_') {
+		Substring identifier = IdentifierParser(this).parse (cursor);
+		
+		// variable
+		Variable* variable = Parser::get_variable (identifier);
+		if (variable) {
+			return variable;
+		}
+		
+		// function call
+		FunctionDeclaration* function = Parser::get_function (identifier);
+		if (function) {
+			cursor.skip_whitespace ();
+			cursor.expect ("(");
+			Call* call = new Call (function);
+			cursor.skip_whitespace ();
+			while (*cursor != ')') {
+				Expression* argument = parse (cursor);
+				call->append_argument (argument);
+				cursor.skip_whitespace ();
+			}
+			if (!call->validate()) cursor.error ("invalid arguments");
+			cursor.expect (")");
+			return call;
+		}
+		
+		// class instantiation
+		Class* _class = get_class (identifier);
+		if (_class) {
+			cursor.skip_whitespace ();
+			cursor.expect ("{");
+			cursor.skip_whitespace ();
+			cursor.expect ("}");
+			return new Instantiation (_class);
+		}
+		
+		// error
+		cursor.error ([&](FILE* f){
+			fputs ("undefined identifier '", f);
+			identifier.write (f);
+			fputs ("'", f);
+		});
+		return nullptr;
+	}
+	else {
+		cursor.error ("unexpected character");
+		return nullptr;
+	}
+}
 Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	if (level == 4) {
-		if (cursor.starts_with("(")) {
+		Expression* expression = parse_last (cursor);
+		// member access
+		cursor.skip_whitespace ();
+		while (cursor.starts_with(".")) {
+			const Class* _class = expression->get_type()->get_class();
+			if (!_class) cursor.error ("variable is no class type");
 			cursor.skip_whitespace ();
-			Expression* expression = parse (cursor);
-			cursor.skip_whitespace ();
-			cursor.expect (")");
-			return expression;
-		}
-		else if (cursor.starts_with("false")) {
-			return new BooleanLiteral (false);
-		}
-		else if (cursor.starts_with("true")) {
-			return new BooleanLiteral (true);
-		}
-		else if (cursor[0].is_numeric()) {
-			// number
-			return NumberParser(this).parse (cursor);
-		}
-		else if (cursor[0].is_alphabetic()) {
 			Substring identifier = IdentifierParser(this).parse (cursor);
-			Variable* variable = Parser::get_variable (identifier);
-			if (variable) {
-				return variable;
-			}
-			FunctionDeclaration* function = Parser::get_function (identifier);
-			if (function) {
-				cursor.skip_whitespace ();
-				cursor.expect ("(");
-				Call* call = new Call (function);
-				cursor.skip_whitespace ();
-				while (*cursor != ')') {
-					Expression* argument = parse (cursor);
-					call->append_argument (argument);
-					cursor.skip_whitespace ();
-				}
-				if (!call->validate()) cursor.error ("invalid arguments");
-				cursor.expect (")");
-				return call;
-			}
-			cursor.error ([&](FILE* f){
-				fputs ("undefined identifier '", f);
-				identifier.write (f);
-				fputs ("'", f);
-			});
-			return nullptr;
+			if (!_class->get_attribute(identifier))
+				cursor.error ("invalid member");
+			expression = new AttributeAccess (expression, identifier);
+			cursor.skip_whitespace ();
 		}
-		else {
-			cursor.error ("unexpected character");
-			return nullptr;
-		}
+		return expression;
 	}
 	Expression* left = parse (cursor, level + 1);
 	cursor.skip_whitespace ();
@@ -244,7 +278,7 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	// return type
 	if (cursor.starts_with(":")) {
 		cursor.skip_whitespace ();
-		Type* return_type = TypeParser(this).parse (cursor, true);
+		const Type* return_type = TypeParser(this).parse (cursor, true);
 		function->set_return_type (return_type);
 		cursor.skip_whitespace ();
 	}
