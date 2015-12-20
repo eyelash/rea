@@ -17,9 +17,18 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "writer.hpp"
 
-Void Type::VOID;
-Bool Type::BOOL;
-Int Type::INT;
+const Void Type::VOID {};
+const Bool Type::BOOL {};
+const Int Type::INT {};
+void Void::insert (Writer& writer) const {
+	writer.write ("void");
+}
+void Bool::insert (Writer& writer) const {
+	writer.write ("i1");
+}
+void Int::insert (Writer& writer) const {
+	writer.write ("i32");
+}
 
 void Number::insert (Writer& writer) {
 	writer.write (n);
@@ -100,13 +109,6 @@ void Call::evaluate (Writer& writer) {
 void Call::insert (Writer& writer) {
 	writer.write ("%%%", value);
 }
-bool Call::validate () {
-	if (arguments.size() != function->get_arguments().size()) return false;
-	for (int i = 0; i < arguments.size(); i++) {
-		if (arguments[i]->get_type() != function->get_arguments()[i]->get_type()) return false;
-	}
-	return true;
-}
 
 void BinaryExpression::evaluate (Writer& writer) {
 	left->evaluate (writer);
@@ -127,7 +129,7 @@ void If::write (Writer& writer) {
 	
 	// if
 	writer.write ("l%:\n", if_label);
-	writer.write (if_block);
+	if_block->write (writer);
 	if (!if_block->returns) writer.write (INDENT "br label %%l%\n", endif_label);
 	
 	// endif
@@ -148,7 +150,7 @@ void While::write (Writer& writer) {
 	
 	// while
 	writer.write ("l%:\n", while_label);
-	writer.write (block);
+	block->write (writer);
 	if (!block->returns) writer.write (INDENT "br label %%l%\n", checkwhile_label);
 	
 	// endwhile
@@ -196,7 +198,7 @@ void Function::write (Writer& writer) {
 	for (Variable* argument: arguments) {
 		writer.write (INDENT "store % %%a%, %* %\n", argument->get_type(), argument->get_n(), argument->get_type(), argument->get_address());
 	}
-	writer.write (block);
+	block->write (writer);
 	if (!block->returns) writer.write (INDENT "ret void\n");
 	writer.write ("}\n\n");
 }

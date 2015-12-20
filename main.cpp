@@ -27,5 +27,5 @@ int main (int argc, char** argv) {
 	Cursor cursor (input.get_data());
 	Program* program = ProgramParser().parse (cursor);
 	Writer writer;
-	writer.write (program);
+	program->write (writer);
 }

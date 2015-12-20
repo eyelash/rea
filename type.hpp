@@ -27,28 +27,22 @@ public:
 	void print (Writer& writer) const override {
 		insert (writer);
 	}
-	static Void VOID;
-	static Bool BOOL;
-	static Int INT;
+	static const Void VOID;
+	static const Bool BOOL;
+	static const Int INT;
 };
 
 class Void: public Type {
 public:
-	void insert (Writer& writer) const override {
-		writer.write ("void");
-	}
+	void insert (Writer& writer) const override;
 };
 
 class Bool: public Type {
 public:
-	void insert (Writer& writer) const override {
-		writer.write ("i1");
-	}
+	void insert (Writer& writer) const override;
 };
 
 class Int: public Type {
 public:
-	void insert (Writer& writer) const override {
-		writer.write ("i32");
-	}
+	void insert (Writer& writer) const override;
 };

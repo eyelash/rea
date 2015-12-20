@@ -254,6 +254,7 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	
 	// name
 	Substring name = IdentifierParser(this).parse (cursor);
+	if (get_function(name)) cursor.error ("function already defined");
 	function = new Function (name);
 	cursor.skip_whitespace ();
 	

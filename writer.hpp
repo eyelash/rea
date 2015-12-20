@@ -90,6 +90,7 @@ class Expression: public Printable {
 public:
 	virtual void evaluate (Writer&) = 0;
 	virtual void insert (Writer&) = 0;
+	virtual bool has_address () { return false; }
 	virtual void evaluate_address (Writer&) {}
 	virtual void insert_address (Writer&) {}
 	virtual const Type* get_type () = 0;
@@ -139,6 +140,7 @@ public:
 	int get_n () const { return n; }
 	void evaluate (Writer& writer) override;
 	void insert (Writer& writer) override;
+	bool has_address () override { return true; }
 	void insert_address (Writer& writer);
 	const Type* get_type () override {
 		return type;
@@ -156,7 +158,7 @@ public:
 		return right->get_type ();
 	}
 	bool validate () override {
-		return left->get_type() == right->get_type();
+		return left->has_address() && left->get_type() == right->get_type();
 	}
 	static Expression* create (Expression* left, Expression* right) {
 		return new Assignment (left, right);
@@ -245,7 +247,7 @@ public:
 	void write (Writer& writer) override;
 };
 
-class Block: public Node {
+class Block {
 	std::vector<Node*> nodes;
 public:
 	bool returns;
@@ -253,7 +255,7 @@ public:
 	void append_node (Node* node) {
 		nodes.push_back (node);
 	}
-	void write (Writer& writer) override;
+	void write (Writer& writer);
 };
 
 class If: public Node {
@@ -333,7 +335,13 @@ public:
 	const Type* get_type () override {
 		return function->get_return_type ();
 	}
-	bool validate () override;
+	bool validate () override {
+		if (arguments.size() != function->get_arguments().size()) return false;
+		for (int i = 0; i < arguments.size(); i++) {
+			if (arguments[i]->get_type() != function->get_arguments()[i]->get_type()) return false;
+		}
+		return true;
+	}
 };
 
 class Class: public Type {
@@ -383,6 +391,7 @@ public:
 	AttributeAccess (Expression* expression, const Substring& name): expression(expression), name(name) {}
 	void evaluate (Writer& writer) override;
 	void insert (Writer& writer) override;
+	bool has_address () override { return true; }
 	void evaluate_address (Writer& writer) override;
 	void insert_address (Writer& writer) override;
 	const Type* get_type () override {
@@ -390,7 +399,7 @@ public:
 	}
 };
 
-class Program: public Node {
+class Program {
 	std::vector<FunctionDeclaration*> function_declarations;
 	std::vector<Function*> functions;
 	std::vector<Class*> classes;
@@ -419,5 +428,5 @@ public:
 		}
 		return nullptr;
 	}
-	void write (Writer& writer) override;
+	void write (Writer& writer);
 };
