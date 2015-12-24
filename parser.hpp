@@ -158,6 +158,9 @@ public:
 		if (parent) return parent->get_class (name);
 		return nullptr;
 	}
+	virtual void add_class (Class* _class) {
+		if (parent) parent->add_class (_class);
+	}
 };
 
 class TypeParser: public Parser {
@@ -233,9 +236,13 @@ class FunctionParser: public Parser {
 	Function* function;
 public:
 	FunctionParser (Parser* parent = nullptr): Parser(parent) {}
-	Function* parse (Cursor& cursor);
+	Function* parse (Cursor& cursor, const Class* _class = nullptr);
 	Variable* add_variable_to_function (const Type* type) override {
 		return function->add_variable (type);
+	}
+	Variable* get_variable (const Substring& name) override {
+		// prevent access to variables outside of the function
+		return nullptr;
 	}
 	const Type* get_return_type () override {
 		return function->get_return_type ();
@@ -271,5 +278,8 @@ public:
 	}
 	Class* get_class (const Substring& name) override {
 		return program->get_class (name);
+	}
+	void add_class (Class* _class) override {
+		program->add_class (_class);
 	}
 };

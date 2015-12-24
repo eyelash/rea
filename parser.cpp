@@ -135,16 +135,34 @@ Expression* ExpressionParser::parse_last (Cursor& cursor) {
 Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	if (level == 4) {
 		Expression* expression = parse_last (cursor);
-		// member access
 		cursor.skip_whitespace ();
 		while (cursor.starts_with(".")) {
-			const Class* _class = expression->get_type()->get_class();
-			if (!_class) cursor.error ("variable is no class type");
 			cursor.skip_whitespace ();
 			Substring identifier = IdentifierParser(this).parse (cursor);
-			if (!_class->get_attribute(identifier))
-				cursor.error ("invalid member");
-			expression = new AttributeAccess (expression, identifier);
+			if (FunctionDeclaration* function = get_function(identifier)) {
+				// method call
+				Call* call = new Call (function);
+				call->append_argument (expression);
+				cursor.skip_whitespace ();
+				cursor.expect ("(");
+				while (*cursor != ')') {
+					Expression* argument = parse (cursor);
+					call->append_argument (argument);
+					cursor.skip_whitespace ();
+				}
+				if (!call->validate()) cursor.error ("invalid arguments");
+				cursor.expect (")");
+				expression = call;
+			}
+			else {
+				const Class* _class = expression->get_type()->get_class();
+				if (_class && _class->get_attribute(identifier)) {
+					expression = new AttributeAccess (expression, identifier);
+				}
+				else {
+					cursor.error ("invalid attribute access");
+				}
+			}
 			cursor.skip_whitespace ();
 		}
 		return expression;
@@ -248,7 +266,7 @@ While* WhileParser::parse (Cursor& cursor) {
 	return result;
 }
 
-Function* FunctionParser::parse (Cursor& cursor) {
+Function* FunctionParser::parse (Cursor& cursor, const Class* _class) {
 	cursor.expect ("func");
 	cursor.skip_whitespace ();
 	
@@ -260,6 +278,10 @@ Function* FunctionParser::parse (Cursor& cursor) {
 	
 	// argument list
 	BlockParser block_parser (this);
+	if (_class) {
+		Variable* argument = block_parser.add_variable ("this", _class);
+		function->append_argument (argument);
+	}
 	cursor.expect("(");
 	cursor.skip_whitespace ();
 	while (*cursor != ')') {
@@ -298,11 +320,20 @@ Class* ClassParser::parse (Cursor& cursor) {
 	cursor.skip_whitespace ();
 	Substring name = IdentifierParser(this).parse (cursor);
 	_class = new Class (name);
+	add_class (_class);
 	cursor.skip_whitespace ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}' && *cursor != '\0') {
-		VariableDefinitionParser(this).parse (cursor);
+		if (cursor.starts_with("var", false)) {
+			VariableDefinitionParser(this).parse (cursor);
+		}
+		else if (cursor.starts_with("func", false)) {
+			FunctionParser(this).parse (cursor, _class);
+		}
+		else {
+			cursor.error ("unexpected character");
+		}
 		cursor.skip_whitespace ();
 	}
 	cursor.expect ("}");
@@ -323,12 +354,13 @@ Program* ProgramParser::parse (Cursor& cursor) {
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
 		if (cursor.starts_with("func", false)) {
-			Function* function = FunctionParser(this).parse (cursor);
-			//program->add_function (function);
+			FunctionParser(this).parse (cursor);
+		}
+		else if (cursor.starts_with("class", false)) {
+			ClassParser(this).parse (cursor);
 		}
 		else {
-			Class* _class = ClassParser(this).parse (cursor);
-			program->add_class (_class);
+			cursor.error ("unexpected character");
 		}
 		cursor.skip_whitespace ();
 	}

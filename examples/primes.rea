@@ -14,8 +14,8 @@ func main() {
     var n = 0
     var i = 1000000
     while n < 10 {
-        if isPrime(i) {
-            print(i)
+        if i.isPrime() {
+            i.print()
             n = n + 1
         }
         i = i + 1
