@@ -25,7 +25,7 @@ int main (int argc, char** argv) {
 	String input (argv[1]);
 	if (!input.get_data()) return EXIT_FAILURE;
 	Cursor cursor (input.get_data());
-	Program* program = ProgramParser().parse (cursor);
+	Program* program = Parser(cursor).parse_program ();
 	Writer writer;
 	program->write (writer);
 }

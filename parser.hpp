@@ -17,7 +17,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "writer.hpp"
 #include <cstdio>
-#include <map>
 
 #define CSI "\e["
 #define RESET CSI "m"
@@ -119,167 +118,68 @@ public:
 	}
 };
 
-class Parser {
-	Parser* parent;
+class Context {
 public:
-	Parser (Parser* parent = nullptr): parent(parent) {}
-	Parser* get_parent () { return parent; }
-	virtual Variable* get_variable (const Substring& name) {
-		if (parent) return parent->get_variable (name);
-		return nullptr;
-	}
-	virtual Variable* add_variable_to_function (const Type* type) {
-		if (parent) return parent->add_variable_to_function (type);
-		return nullptr;
-	}
-	virtual void add_variable_to_scope (const Substring& name, Variable* variable) {
-		if (parent) parent->add_variable_to_scope (name, variable);
-	}
-	Variable* add_variable (const Substring& name, const Type* type) {
-		Variable* variable = add_variable_to_function (type);
-		add_variable_to_scope (name, variable);
-		return variable;
-	}
-	virtual FunctionDeclaration* get_function (const Substring& name) {
-		if (parent) return parent->get_function (name);
-		return nullptr;
-	}
-	virtual void add_function (Function* function) {
-		if (parent) parent->add_function (function);
-	}
-	virtual const Type* get_return_type () {
-		if (parent) return parent->get_return_type ();
-		else return nullptr;
-	}
-	virtual void set_returned () {
-		if (parent) parent->set_returned ();
-	}
-	virtual Class* get_class (const Substring& name) {
-		if (parent) return parent->get_class (name);
-		return nullptr;
-	}
-	virtual void add_class (Class* _class) {
-		if (parent) parent->add_class (_class);
-	}
-};
-
-class TypeParser: public Parser {
-public:
-	TypeParser (Parser* parent = nullptr): Parser(parent) {}
-	const Type* parse (Cursor& cursor, bool allow_void);
-};
-
-class NumberParser: public Parser {
-public:
-	NumberParser (Parser* parent = nullptr): Parser(parent) {}
-	Number* parse (Cursor& cursor);
-};
-
-class IdentifierParser: public Parser {
-public:
-	IdentifierParser (Parser* parent = nullptr): Parser(parent) {}
-	Substring parse (Cursor& cursor);
-};
-
-class ExpressionParser: public Parser {
-public:
-	ExpressionParser (Parser* parent = nullptr): Parser(parent) {}
-	Expression* parse (Cursor& cursor, int level = 0);
-	Expression* parse_last (Cursor& cursor);
-};
-
-class VariableDefinitionParser: public Parser {
-public:
-	VariableDefinitionParser (Parser* parent = nullptr): Parser(parent) {}
-	Node* parse (Cursor& cursor);
-};
-
-class LineParser: public Parser {
-public:
-	LineParser (Parser* parent = nullptr): Parser(parent) {}
-	Node* parse (Cursor& cursor);
-};
-
-class BlockParser: public Parser {
+	Program* program;
+	Class* _class;
+	Function* function;
 	Block* block;
-	std::map<Substring, Variable*> variables;
 public:
-	BlockParser (Parser* parent = nullptr): Parser(parent) {}
-	Block* parse (Cursor& cursor);
-	Variable* get_variable (const Substring& name) override {
-		auto i = variables.find (name);
-		if (i != variables.end())
-			return i->second;
-		return Parser::get_variable (name);
+	Context (): program(nullptr), _class(nullptr), function(nullptr), block(nullptr) {}
+	Class* get_class (const Substring& name) {
+		return program->get_class (name);
 	}
-	void add_variable_to_scope (const Substring& name, Variable* variable) override {
-		variables[name] = variable;
+	void add_class (Class* _class) {
+		program->add_class (_class);
 	}
-	void set_returned () override {
+	FunctionDeclaration* get_function (const Substring& name) {
+		return program->get_function (name);
+	}
+	void add_function (Function* function) {
+		program->add_function (function);
+	}
+	Variable* get_variable (const Substring& name) {
+		if (_class) {
+			return _class->get_attribute (name);
+		}
+		else if (function && block) {
+			return block->get_variable (name);
+		}
+		return nullptr;
+	}
+	void add_variable (Variable* variable) {
+		if (_class) {
+			_class->add_attribute (variable);
+		}
+		else if (function && block) {
+			function->add_variable (variable);
+			block->add_variable (variable);
+		}
+	}
+	const Type* get_return_type () {
+		return function->get_return_type ();
+	}
+	void set_returned () {
 		block->returns = true;
 	}
 };
 
-class IfParser: public Parser {
+class Parser {
+	Context context;
+	Cursor& cursor;
 public:
-	IfParser (Parser* parent = nullptr): Parser(parent) {}
-	If* parse (Cursor& cursor);
-};
-
-class WhileParser: public Parser {
-public:
-	WhileParser (Parser* parent = nullptr): Parser(parent) {}
-	While* parse (Cursor& cursor);
-};
-
-class FunctionParser: public Parser {
-	Function* function;
-public:
-	FunctionParser (Parser* parent = nullptr): Parser(parent) {}
-	Function* parse (Cursor& cursor, const Class* _class = nullptr);
-	Variable* add_variable_to_function (const Type* type) override {
-		return function->add_variable (type);
-	}
-	Variable* get_variable (const Substring& name) override {
-		// prevent access to variables outside of the function
-		return nullptr;
-	}
-	const Type* get_return_type () override {
-		return function->get_return_type ();
-	}
-};
-
-class ClassParser: public Parser {
-	Class* _class;
-public:
-	ClassParser (Parser* parent): Parser(parent) {}
-	Class* parse (Cursor& cursor);
-	Variable* add_variable_to_function (const Type* type) override {
-		return _class->create_attribute (type);
-	}
-	void add_variable_to_scope (const Substring& name, Variable* variable) override {
-		_class->add_attribute (name, variable);
-	}
-	Variable* get_variable (const Substring& name) override {
-		return _class->get_attribute (name);
-	}
-};
-
-class ProgramParser: public Parser {
-	Program* program;
-public:
-	ProgramParser (Parser* parent = nullptr): Parser(parent) {}
-	Program* parse (Cursor& cursor);
-	FunctionDeclaration* get_function (const Substring& name) override {
-		return program->get_function (name);
-	}
-	void add_function (Function* function) override {
-		program->add_function (function);
-	}
-	Class* get_class (const Substring& name) override {
-		return program->get_class (name);
-	}
-	void add_class (Class* _class) override {
-		program->add_class (_class);
-	}
+	Parser (Cursor& cursor): cursor(cursor) {}
+	const Type* parse_type (bool allow_void);
+	Number* parse_number ();
+	Substring parse_identifier ();
+	Expression* parse_expression (int level = 0);
+	Expression* parse_expression_last ();
+	Node* parse_variable_definition ();
+	Node* parse_line ();
+	Block* parse_block (bool add_arguments = false);
+	If* parse_if ();
+	While* parse_while ();
+	void parse_function ();
+	void parse_class ();
+	Program* parse_program ();
 };

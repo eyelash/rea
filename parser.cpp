@@ -17,21 +17,21 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
-const Type* TypeParser::parse (Cursor& cursor, bool allow_void) {
+const Type* Parser::parse_type (bool allow_void) {
 	if (allow_void && cursor.starts_with("Void"))
 		return &Type::VOID;
 	if (cursor.starts_with("Bool"))
 		return &Type::BOOL;
 	if (cursor.starts_with("Int"))
 		return &Type::INT;
-	Substring identifier = IdentifierParser(this).parse (cursor);
-	const Type* type = get_class (identifier);
+	Substring identifier = parse_identifier ();
+	const Type* type = context.get_class (identifier);
 	if (type) return type;
 	cursor.error ("unknown type");
 	return nullptr;
 }
 
-Number* NumberParser::parse (Cursor& cursor) {
+Number* Parser::parse_number () {
 	int n = 0;
 	while (cursor[0].is_numeric()) {
 		n *= 10;
@@ -41,7 +41,7 @@ Number* NumberParser::parse (Cursor& cursor) {
 	return new Number (n);
 }
 
-Substring IdentifierParser::parse (Cursor& cursor) {
+Substring Parser::parse_identifier () {
 	if (!(cursor[0].is_alphabetic() || *cursor == '_')) cursor.error ("expected alphabetic character");
 	int i = 0;
 	while (cursor[i].is_alphanumeric() || cursor[i] == '_') {
@@ -66,10 +66,10 @@ static Operator operators[][7] = {
 	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
 };
 
-Expression* ExpressionParser::parse_last (Cursor& cursor) {
+Expression* Parser::parse_expression_last () {
 	if (cursor.starts_with("(")) {
 		cursor.skip_whitespace ();
-		Expression* expression = parse (cursor);
+		Expression* expression = parse_expression ();
 		cursor.skip_whitespace ();
 		cursor.expect (")");
 		return expression;
@@ -81,26 +81,26 @@ Expression* ExpressionParser::parse_last (Cursor& cursor) {
 		return new BooleanLiteral (true);
 	}
 	else if (cursor[0].is_numeric()) {
-		return NumberParser(this).parse (cursor);
+		return parse_number ();
 	}
 	else if (cursor[0].is_alphabetic() || *cursor == '_') {
-		Substring identifier = IdentifierParser(this).parse (cursor);
+		Substring identifier = parse_identifier ();
 		
 		// variable
-		Variable* variable = Parser::get_variable (identifier);
+		Variable* variable = context.get_variable (identifier);
 		if (variable) {
 			return variable;
 		}
 		
 		// function call
-		FunctionDeclaration* function = Parser::get_function (identifier);
+		FunctionDeclaration* function = context.get_function (identifier);
 		if (function) {
 			cursor.skip_whitespace ();
 			cursor.expect ("(");
 			Call* call = new Call (function);
 			cursor.skip_whitespace ();
 			while (*cursor != ')') {
-				Expression* argument = parse (cursor);
+				Expression* argument = parse_expression ();
 				call->append_argument (argument);
 				cursor.skip_whitespace ();
 			}
@@ -110,7 +110,7 @@ Expression* ExpressionParser::parse_last (Cursor& cursor) {
 		}
 		
 		// class instantiation
-		Class* _class = get_class (identifier);
+		Class* _class = context.get_class (identifier);
 		if (_class) {
 			cursor.skip_whitespace ();
 			cursor.expect ("{");
@@ -132,21 +132,21 @@ Expression* ExpressionParser::parse_last (Cursor& cursor) {
 		return nullptr;
 	}
 }
-Expression* ExpressionParser::parse (Cursor& cursor, int level) {
+Expression* Parser::parse_expression (int level) {
 	if (level == 4) {
-		Expression* expression = parse_last (cursor);
+		Expression* expression = parse_expression_last ();
 		cursor.skip_whitespace ();
 		while (cursor.starts_with(".")) {
 			cursor.skip_whitespace ();
-			Substring identifier = IdentifierParser(this).parse (cursor);
-			if (FunctionDeclaration* function = get_function(identifier)) {
+			Substring identifier = parse_identifier ();
+			if (FunctionDeclaration* function = context.get_function(identifier)) {
 				// method call
 				Call* call = new Call (function);
 				call->append_argument (expression);
 				cursor.skip_whitespace ();
 				cursor.expect ("(");
 				while (*cursor != ')') {
-					Expression* argument = parse (cursor);
+					Expression* argument = parse_expression ();
 					call->append_argument (argument);
 					cursor.skip_whitespace ();
 				}
@@ -167,7 +167,7 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 		}
 		return expression;
 	}
-	Expression* left = parse (cursor, level + 1);
+	Expression* left = parse_expression (level + 1);
 	cursor.skip_whitespace ();
 	bool match = true;
 	while (match) {
@@ -175,7 +175,7 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 		for (Operator* op = operators[level]; op->identifier && !match; op++) {
 			if (cursor.starts_with(op->identifier)) {
 				cursor.skip_whitespace ();
-				Expression* right = parse (cursor, level + 1);
+				Expression* right = parse_expression (level + 1);
 				if (op->create) left = op->create (left, right);
 				if (!left->validate()) cursor.error ([&](FILE* f){
 					fprintf (f, "invalid operands for operator '%s'", op->identifier);
@@ -187,111 +187,127 @@ Expression* ExpressionParser::parse (Cursor& cursor, int level) {
 	return left;
 }
 
-Node* VariableDefinitionParser::parse (Cursor& cursor) {
+Node* Parser::parse_variable_definition () {
 	cursor.expect ("var");
 	cursor.skip_whitespace ();
-	Substring name = IdentifierParser(this).parse (cursor);
-	if (get_variable(name)) cursor.error ("variable already defined");
+	Substring name = parse_identifier ();
+	if (context.get_variable(name)) cursor.error ("variable already defined");
 	cursor.skip_whitespace ();
 	cursor.expect ("=");
 	cursor.skip_whitespace ();
-	Expression* expression = ExpressionParser(this).parse (cursor);
+	Expression* expression = parse_expression ();
 	if (expression->get_type() == &Type::VOID) cursor.error ("variables of type Void are not allowed");
-	Variable* variable = add_variable (name, expression->get_type());
+	Variable* variable = new Variable (name, expression->get_type());
+	context.add_variable (variable);
 	Assignment* assignment = new Assignment (variable, expression);
 	return new ExpressionNode (assignment);
 }
 
-Node* LineParser::parse (Cursor& cursor) {
+Node* Parser::parse_line () {
 	if (cursor.starts_with("var", false)) {
-		return VariableDefinitionParser(this).parse (cursor);
+		return parse_variable_definition ();
 	}
 	else if (cursor.starts_with("if", false)) {
-		return IfParser(this).parse (cursor);
+		return parse_if ();
 	}
 	else if (cursor.starts_with("while", false)) {
-		return WhileParser(this).parse (cursor);
+		return parse_while ();
 	}
 	else if (cursor.starts_with("return")) {
-		const Type* return_type = get_return_type ();
+		const Type* return_type = context.get_return_type ();
 		Expression* expression = nullptr;
 		if (return_type != &Type::VOID) {
 			cursor.skip_whitespace ();
-			expression = ExpressionParser(this).parse (cursor);
+			expression = parse_expression ();
 			if (expression->get_type() != return_type)
 				cursor.error ("invalid return type");
 		}
-		set_returned ();
+		context.set_returned ();
 		return new Return (expression);
 	}
 	else {
-		return new ExpressionNode (ExpressionParser(this).parse (cursor));
+		return new ExpressionNode (parse_expression ());
 	}
 }
 
-Block* BlockParser::parse (Cursor& cursor) {
-	block = new Block ();
+Block* Parser::parse_block (bool add_arguments) {
+	Block* previous_block = context.block;
+	Block* block = new Block (previous_block);
+	context.block = block;
+	
+	if (add_arguments) {
+		for (Variable* argument: context.function->get_arguments()) {
+			context.add_variable (argument);
+		}
+	}
+	
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}' && !block->returns && *cursor != '\0') {
-		Node* node = LineParser(this).parse (cursor);
-		block->append_node (node);
+		Node* node = parse_line ();
+		block->add_node (node);
 		cursor.skip_whitespace ();
 	}
 	cursor.expect ("}");
+	
+	context.block = previous_block;
 	return block;
 }
 
-If* IfParser::parse (Cursor& cursor) {
+If* Parser::parse_if () {
 	cursor.expect ("if");
 	cursor.skip_whitespace ();
-	Expression* condition = ExpressionParser(this).parse (cursor);
+	Expression* condition = parse_expression ();
 	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	If* result = new If (condition);
 	cursor.skip_whitespace ();
-	Block* if_block = BlockParser(this).parse (cursor);
+	Block* if_block = parse_block ();
 	result->set_if_block (if_block);
 	return result;
 }
 
-While* WhileParser::parse (Cursor& cursor) {
+While* Parser::parse_while () {
 	cursor.expect ("while");
 	cursor.skip_whitespace ();
-	Expression* condition = ExpressionParser(this).parse (cursor);
+	Expression* condition = parse_expression ();
 	if (condition->get_type() != &Type::BOOL) cursor.error ("condition must be of type Bool");
 	While* result = new While (condition);
 	cursor.skip_whitespace ();
-	Block* block = BlockParser(this).parse (cursor);
+	Block* block = parse_block ();
 	result->set_block (block);
 	return result;
 }
 
-Function* FunctionParser::parse (Cursor& cursor, const Class* _class) {
+void Parser::parse_function () {
+	Context previous_context = context;
+	
 	cursor.expect ("func");
 	cursor.skip_whitespace ();
 	
 	// name
-	Substring name = IdentifierParser(this).parse (cursor);
-	if (get_function(name)) cursor.error ("function already defined");
-	function = new Function (name);
+	Substring name = parse_identifier ();
+	if (context.get_function(name)) cursor.error ("function already defined");
+	Function* function = new Function (name);
+	context.add_function (function);
+	context.function = function;
+	context._class = nullptr;
 	cursor.skip_whitespace ();
 	
 	// argument list
-	BlockParser block_parser (this);
-	if (_class) {
-		Variable* argument = block_parser.add_variable ("this", _class);
+	if (previous_context._class) {
+		Variable* argument = new Variable ("this", previous_context._class);
 		function->append_argument (argument);
 	}
 	cursor.expect("(");
 	cursor.skip_whitespace ();
 	while (*cursor != ')') {
-		Substring argument_name = IdentifierParser(this).parse (cursor);
+		Substring argument_name = parse_identifier ();
 		cursor.skip_whitespace ();
 		cursor.expect (":");
 		cursor.skip_whitespace ();
-		const Type* argument_type = TypeParser(this).parse (cursor, false);
-		Variable* argument = block_parser.add_variable (argument_name, argument_type);
-		if (!argument) cursor.error ("duplicate argument name");
+		const Type* argument_type = parse_type (false);
+		Variable* argument = new Variable (argument_name, argument_type);
+		// TODO: report error for duplicate argument names
 		function->append_argument (argument);
 		cursor.skip_whitespace ();
 	}
@@ -301,35 +317,39 @@ Function* FunctionParser::parse (Cursor& cursor, const Class* _class) {
 	// return type
 	if (cursor.starts_with(":")) {
 		cursor.skip_whitespace ();
-		const Type* return_type = TypeParser(this).parse (cursor, true);
+		const Type* return_type = parse_type (true);
 		function->set_return_type (return_type);
 		cursor.skip_whitespace ();
 	}
-	add_function (function);
 	
 	// code block
-	Block* block = block_parser.parse (cursor);
+	Block* block = parse_block (true);
 	if (function->get_return_type() != &Type::VOID && !block->returns)
 		cursor.error ("missing return statement");
 	function->set_block (block);
-	return function;
+	
+	context = previous_context;
 }
 
-Class* ClassParser::parse (Cursor& cursor) {
+void Parser::parse_class () {
+	Context previous_context = context;
+	
 	cursor.expect ("class");
 	cursor.skip_whitespace ();
-	Substring name = IdentifierParser(this).parse (cursor);
-	_class = new Class (name);
-	add_class (_class);
+	Substring name = parse_identifier ();
+	Class* _class = new Class (name);
+	context.add_class (_class);
+	context._class = _class;
+	context.function = nullptr;
 	cursor.skip_whitespace ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}' && *cursor != '\0') {
 		if (cursor.starts_with("var", false)) {
-			VariableDefinitionParser(this).parse (cursor);
+			parse_variable_definition ();
 		}
 		else if (cursor.starts_with("func", false)) {
-			FunctionParser(this).parse (cursor, _class);
+			parse_function ();
 		}
 		else {
 			cursor.error ("unexpected character");
@@ -337,27 +357,29 @@ Class* ClassParser::parse (Cursor& cursor) {
 		cursor.skip_whitespace ();
 	}
 	cursor.expect ("}");
-	return _class;
+	
+	context = previous_context;
 }
 
 static FunctionDeclaration* create_function (const char* name, std::initializer_list<const Type*> arguments, const Type* return_type = &Type::VOID) {
 	FunctionDeclaration* function = new FunctionDeclaration (name);
 	for (const Type* type: arguments)
-		function->append_argument (new Variable (0, type));
+		function->append_argument (new Variable ("", type));
 	function->set_return_type (return_type);
 	return function;
 }
 
-Program* ProgramParser::parse (Cursor& cursor) {
-	program = new Program ();
+Program* Parser::parse_program () {
+	Program* program = new Program ();
+	context.program = program;
 	program->add_function_declaration (create_function("print", {&Type::INT}));
 	cursor.skip_whitespace ();
 	while (*cursor != '\0') {
 		if (cursor.starts_with("func", false)) {
-			FunctionParser(this).parse (cursor);
+			parse_function ();
 		}
 		else if (cursor.starts_with("class", false)) {
-			ClassParser(this).parse (cursor);
+			parse_class ();
 		}
 		else {
 			cursor.error ("unexpected character");

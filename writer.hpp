@@ -18,7 +18,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "foundation.hpp"
 #include <cstdio>
 #include <vector>
-#include <map>
 
 #define INDENT "  "
 
@@ -132,11 +131,16 @@ public:
 };
 
 class Variable: public Expression {
-	int n;
+	Substring name;
 	const Type* type;
+	int n;
 	int value;
 public:
-	Variable (int n, const Type* type): n(n), type(type) {}
+	Variable (const Substring& name, const Type* type): name(name), type(type) {}
+	const Substring& get_name () const {
+		return name;
+	}
+	void set_n (int n) { this->n = n; }
 	int get_n () const { return n; }
 	void evaluate (Writer& writer) override;
 	void insert (Writer& writer) override;
@@ -248,12 +252,24 @@ public:
 };
 
 class Block {
+	Block* parent;
 	std::vector<Node*> nodes;
+	std::vector<Variable*> variables;
 public:
 	bool returns;
-	Block (): returns(false) {}
-	void append_node (Node* node) {
+	Block (Block* parent): parent(parent), returns(false) {}
+	void add_node (Node* node) {
 		nodes.push_back (node);
+	}
+	Variable* get_variable (const Substring& name) {
+		for (Variable* variable: variables) {
+			if (variable->get_name() == name) return variable;
+		}
+		if (parent) return parent->get_variable (name);
+		return nullptr;
+	}
+	void add_variable (Variable* variable) {
+		variables.push_back (variable);
 	}
 	void write (Writer& writer);
 };
@@ -313,10 +329,9 @@ public:
 	void set_block (Block* block) {
 		this->block = block;
 	}
-	Variable* add_variable (const Type* type) {
-		Variable* variable = new Variable (variables.size(), type);
+	void add_variable (Variable* variable) {
+		variable->set_n (variables.size());
 		variables.push_back (variable);
-		return variable;
 	}
 	void write (Writer& writer);
 };
@@ -346,21 +361,20 @@ public:
 
 class Class: public Type {
 	Substring name;
-	std::map<Substring, Variable*> attributes;
+	std::vector<Variable*> attributes;
 public:
 	Class (const Substring& name): name(name) {}
 	const Substring& get_name () const {
 		return name;
 	}
-	Variable* create_attribute (const Type* type) {
-		return new Variable (attributes.size(), type);
-	}
-	void add_attribute (const Substring& name, Variable* variable) {
-		attributes[name] = variable;
+	void add_attribute (Variable* attribute) {
+		attribute->set_n (attributes.size());
+		attributes.push_back (attribute);
 	}
 	Variable* get_attribute (const Substring& name) const {
-		auto i = attributes.find (name);
-		if (i != attributes.end()) return i->second;
+		for (Variable* attribute: attributes) {
+			if (attribute->get_name() == name) return attribute;
+		}
 		return nullptr;
 	}
 	void write (Writer& writer);

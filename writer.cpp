@@ -213,10 +213,10 @@ void Class::write (Writer& writer) {
 	writer.write ("%%% = type {\n", name);
 	auto i = attributes.begin ();
 	if (i != attributes.end()) {
-		writer.write (INDENT "%", i->second->get_type());
+		writer.write (INDENT "%", (*i)->get_type());
 		++i;
 		while (i != attributes.end()) {
-			writer.write (",\n" INDENT "%", i->second->get_type());
+			writer.write (",\n" INDENT "%", (*i)->get_type());
 			++i;
 		}
 	}
