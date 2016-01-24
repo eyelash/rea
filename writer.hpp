@@ -108,6 +108,31 @@ public:
 	}
 };
 
+class FunctionPrototype {
+public:
+	virtual const Substring& get_name () const = 0;
+	virtual const Type* get_argument (int index) const = 0;
+	bool operator == (const FunctionPrototype& other) const {
+		if (!(get_name() == other.get_name())) return false;
+		for (int i = 0; get_argument(i) || other.get_argument(i); ++i) {
+			if (get_argument(i) != other.get_argument(i)) return false;
+		}
+		return true;
+	}
+	void insert_mangled_name (Writer& writer);
+	class MangledName: public ConstPrintable {
+		FunctionPrototype* prototype;
+	public:
+		MangledName (FunctionPrototype* prototype): prototype(prototype) {}
+		void print (Writer& writer) const {
+			prototype->insert_mangled_name (writer);
+		}
+	};
+	MangledName get_mangled_name () {
+		return MangledName (this);
+	}
+};
+
 class Number: public Expression {
 	int n;
 public:
@@ -252,12 +277,12 @@ public:
 };
 
 class Block {
-	Block* parent;
 	std::vector<Node*> nodes;
 	std::vector<Variable*> variables;
 public:
+	Block* parent;
 	bool returns;
-	Block (Block* parent): parent(parent), returns(false) {}
+	Block (): parent(nullptr), returns(false) {}
 	void add_node (Node* node) {
 		nodes.push_back (node);
 	}
@@ -276,41 +301,40 @@ public:
 
 class If: public Node {
 	Expression* condition;
-	Block* if_block;
 public:
-	If (Expression* condition): condition(condition) {}
-	void set_if_block (Block* block) {
-		if_block = block;
+	Block* if_block;
+	If (Expression* condition): condition(condition) {
+		if_block = new Block ();
 	}
 	void write (Writer& writer) override;
 };
 
 class While: public Node {
 	Expression* condition;
-	Block* block;
 public:
-	While (Expression* condition): condition(condition) {}
-	void set_block (Block* block) {
-		this->block = block;
+	Block* block;
+	While (Expression* condition): condition(condition) {
+		block = new Block ();
 	}
 	void write (Writer& writer) override;
 };
 
-class FunctionDeclaration {
+class FunctionDeclaration: public FunctionPrototype {
 protected:
 	Substring name;
 	std::vector<Variable*> arguments;
 	const Type* return_type;
 public:
 	FunctionDeclaration (const Substring& name): name(name), return_type(&Type::VOID) {}
-	const Substring& get_name () const {
+	const Substring& get_name () const override {
 		return name;
+	}
+	const Type* get_argument (int i) const override {
+		if (i < arguments.size()) return arguments[i]->get_type();
+		else return nullptr;
 	}
 	void append_argument (Variable* argument) {
 		arguments.push_back (argument);
-	}
-	const std::vector<Variable*>& get_arguments () const {
-		return arguments;
 	}
 	void set_return_type (const Type* return_type) {
 		this->return_type = return_type;
@@ -322,12 +346,17 @@ public:
 };
 
 class Function: public FunctionDeclaration {
-	Block* block;
 	std::vector<Variable*> variables;
 public:
-	Function (const Substring& name): FunctionDeclaration(name) {}
-	void set_block (Block* block) {
-		this->block = block;
+	Block* block;
+	Function (const Substring& name): FunctionDeclaration(name) {
+		block = new Block ();
+	}
+	void add_argument (const Substring& name, const Type* type) {
+		Variable* argument = new Variable (name, type);
+		add_variable (argument);
+		block->add_variable (argument);
+		arguments.push_back (argument);
 	}
 	void add_variable (Variable* variable) {
 		variable->set_n (variables.size());
@@ -336,35 +365,43 @@ public:
 	void write (Writer& writer);
 };
 
-class Call: public Expression {
-	FunctionDeclaration* function;
+class Call: public Expression, public FunctionPrototype {
+	Substring name;
 	std::vector<Expression*> arguments;
+	const Type* return_type;
 	int value;
 public:
-	Call (FunctionDeclaration* function): function(function) {}
-	void append_argument (Expression* argument) {
+	Call (const Substring& name): name(name) {}
+	const Substring& get_name () const override {
+		return name;
+	}
+	const Type* get_argument (int i) const override {
+		if (i < arguments.size()) return arguments[i]->get_type();
+		else return nullptr;
+	}
+	void add_argument (Expression* argument) {
 		arguments.push_back (argument);
+	}
+	void set_return_type (const Type* type) {
+		return_type = type;
 	}
 	void evaluate (Writer& writer);
 	void insert (Writer& writer);
 	const Type* get_type () override {
-		return function->get_return_type ();
-	}
-	bool validate () override {
-		if (arguments.size() != function->get_arguments().size()) return false;
-		for (int i = 0; i < arguments.size(); i++) {
-			if (arguments[i]->get_type() != function->get_arguments()[i]->get_type()) return false;
-		}
-		return true;
+		return return_type;
 	}
 };
 
 class Class: public Type {
 	Substring name;
 	std::vector<Variable*> attributes;
+	Function* constructor;
 public:
-	Class (const Substring& name): name(name) {}
-	const Substring& get_name () const {
+	Class (const Substring& name): name(name) {
+		constructor = new Function ("init");
+		constructor->add_argument ("this", this);
+	}
+	Substring get_name () const override {
 		return name;
 	}
 	void add_attribute (Variable* attribute) {
@@ -376,6 +413,9 @@ public:
 			if (attribute->get_name() == name) return attribute;
 		}
 		return nullptr;
+	}
+	Function* get_constructor () {
+		return constructor;
 	}
 	void write (Writer& writer);
 	void insert (Writer& writer) const override;
@@ -424,12 +464,12 @@ public:
 	void add_function (Function* function) {
 		functions.push_back (function);
 	}
-	FunctionDeclaration* get_function (const Substring& name) {
-		for (FunctionDeclaration* function: function_declarations) {
-			if (function->get_name() == name) return function;
+	const Type* get_return_type (const FunctionPrototype* function) {
+		for (FunctionDeclaration* existing_function: function_declarations) {
+			if (*existing_function == *function) return existing_function->get_return_type();
 		}
-		for (Function* function: functions) {
-			if (function->get_name() == name) return function;
+		for (Function* existing_function: functions) {
+			if (*existing_function == *function) return existing_function->get_return_type();
 		}
 		return nullptr;
 	}

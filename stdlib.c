@@ -15,8 +15,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 */
 
+#include <stdint.h>
 #include <stdio.h>
 
-void print (int n) {
+void print (int32_t n) asm ("print.Int");
+void print (int32_t n) {
 	printf ("%d\n", n);
 }

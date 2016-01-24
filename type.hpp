@@ -23,6 +23,7 @@ class Class;
 class Type: public ConstPrintable {
 public:
 	virtual void insert (Writer& writer) const = 0;
+	virtual Substring get_name () const = 0;
 	virtual const Class* get_class () const { return nullptr; }
 	void print (Writer& writer) const override {
 		insert (writer);
@@ -35,14 +36,17 @@ public:
 class Void: public Type {
 public:
 	void insert (Writer& writer) const override;
+	Substring get_name () const override { return "Void"; }
 };
 
 class Bool: public Type {
 public:
 	void insert (Writer& writer) const override;
+	Substring get_name () const override { return "Bool"; }
 };
 
 class Int: public Type {
 public:
 	void insert (Writer& writer) const override;
+	Substring get_name () const override { return "Int"; }
 };

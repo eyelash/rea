@@ -30,6 +30,12 @@ void Int::insert (Writer& writer) const {
 	writer.write ("i32");
 }
 
+void FunctionPrototype::insert_mangled_name (Writer& writer) {
+	writer.write (get_name());
+	for (int i = 0; const Type* argument = get_argument(i); ++i)
+		writer.write (".%", argument->get_name());
+}
+
 void Number::insert (Writer& writer) {
 	writer.write (n);
 }
@@ -52,6 +58,7 @@ void Variable::insert_address (Writer& writer) {
 void Instantiation::evaluate (Writer& writer) {
 	value = writer.get_next_value ();
 	writer.write (INDENT "%%% = alloca %%%\n", value, _class->get_name());
+	writer.write (INDENT "call void @init.%(% %)\n", _class->get_name(), _class, this);
 }
 void Instantiation::insert (Writer& writer) {
 	writer.write ("%%%", value);
@@ -88,12 +95,12 @@ void Call::evaluate (Writer& writer) {
 	for (Expression* argument: arguments) {
 		argument->evaluate (writer);
 	}
-	if (function->get_return_type() == &Type::VOID) {
-		writer.write (INDENT "call void @%(", function->get_name());
+	if (return_type == &Type::VOID) {
+		writer.write (INDENT "call void @%(", get_mangled_name());
 	}
 	else {
 		value = writer.get_next_value ();
-		writer.write (INDENT "%%% = call % @%(", value, function->get_return_type(), function->get_name());
+		writer.write (INDENT "%%% = call % @%(", value, return_type, get_mangled_name());
 	}
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
@@ -166,7 +173,7 @@ void Return::write (Writer& writer) {
 }
 
 void FunctionDeclaration::write (Writer& writer) {
-	writer.write ("declare % @%(", return_type, name);
+	writer.write ("declare % @%(", return_type, get_mangled_name());
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
 		writer.write ((*i)->get_type());
@@ -180,7 +187,7 @@ void FunctionDeclaration::write (Writer& writer) {
 }
 
 void Function::write (Writer& writer) {
-	writer.write ("define % @%(", return_type, name);
+	writer.write ("define % @%(", return_type, get_mangled_name());
 	auto i = arguments.begin ();
 	if (i != arguments.end()) {
 		writer.write ("% %%a%", (*i)->get_type(), (*i)->get_n());

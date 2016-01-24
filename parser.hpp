@@ -132,8 +132,8 @@ public:
 	void add_class (Class* _class) {
 		program->add_class (_class);
 	}
-	FunctionDeclaration* get_function (const Substring& name) {
-		return program->get_function (name);
+	const Type* get_return_type (const FunctionPrototype* function) {
+		return program->get_return_type (function);
 	}
 	void add_function (Function* function) {
 		program->add_function (function);
@@ -147,14 +147,18 @@ public:
 		}
 		return nullptr;
 	}
-	void add_variable (Variable* variable) {
+	Expression* add_variable (const Substring& name, const Type* type) {
+		Variable* variable = new Variable (name, type);
 		if (_class) {
 			_class->add_attribute (variable);
+			return new AttributeAccess (_class->get_constructor()->block->get_variable("this"), name);
 		}
 		else if (function && block) {
 			function->add_variable (variable);
 			block->add_variable (variable);
+			return variable;
 		}
+		return nullptr;
 	}
 	const Type* get_return_type () {
 		return function->get_return_type ();
@@ -176,7 +180,7 @@ public:
 	Expression* parse_expression_last ();
 	Node* parse_variable_definition ();
 	Node* parse_line ();
-	Block* parse_block (bool add_arguments = false);
+	void parse_block (Block* block);
 	If* parse_if ();
 	While* parse_while ();
 	void parse_function ();
