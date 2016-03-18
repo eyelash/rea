@@ -58,7 +58,11 @@ void Variable::insert_address (Writer& writer) {
 void Instantiation::evaluate (Writer& writer) {
 	value = writer.get_next_value ();
 	writer.write (INDENT "%%% = alloca %%%\n", value, _class->get_name());
-	writer.write (INDENT "call void @init.%(% %)\n", _class->get_name(), _class, this);
+	for (int i = 0; i < attribute_values.size(); ++i) {
+		int attribute_value = writer.get_next_value ();
+		writer.write (INDENT "%%% = getelementptr % %%%, i32 0, i32 %\n", attribute_value, _class, value, i);
+		writer.write (INDENT "store % %, %* %%%\n", attribute_values[i]->get_type(), attribute_values[i], attribute_values[i]->get_type(), attribute_value);
+	}
 }
 void Instantiation::insert (Writer& writer) {
 	writer.write ("%%%", value);

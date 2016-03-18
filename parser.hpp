@@ -38,17 +38,33 @@ class Cursor {
 		}
 		fputs (BOLD "^" RESET "\n", stream);
 	}
+	void print_message (const char* str) {
+		fputs (str, stderr);
+	}
+	void print_message (const Substring& substring) {
+		substring.write (stderr);
+	}
+	template <class T0, class... T> void print_message (const char* s, const T0& v0, const T&... v) {
+		while (true) {
+			if (*s == '\0') return;
+			if (*s == '%') {
+				++s;
+				if (*s != '%') break;
+			}
+			fputc (*s, stderr);
+			++s;
+		}
+		print_message (v0);
+		print_message (s, v...);
+	}
 public:
 	Cursor(const char* string): string(string), position(0), line(1) {}
-	template <class F> void error (const F& functor) {
+	template <class... T> void error (const char* s, const T&... v) {
 		fprintf (stderr, BOLD "line %d: " RED "error: " RESET BOLD, line);
-		functor (stderr);
+		print_message (s, v...);
 		fputs (RESET "\n", stderr);
 		print_position (stderr);
 		exit (EXIT_FAILURE);
-	}
-	void error (const char* message) {
-		error ([&](FILE* f){ fputs (message, f); });
 	}
 	void advance () {
 		if (string[position] == '\n') {
@@ -94,7 +110,7 @@ public:
 	}
 	bool expect (const char* s) {
 		if (!starts_with(s)) {
-			error ([&](FILE* f){ fprintf (f, "expected '%s'", s); });
+			error ("expected '%'", s);
 			return false;
 		}
 		else
@@ -149,11 +165,7 @@ public:
 	}
 	Expression* add_variable (const Substring& name, const Type* type) {
 		Variable* variable = new Variable (name, type);
-		if (_class) {
-			_class->add_attribute (variable);
-			return new AttributeAccess (_class->get_constructor()->block->get_variable("this"), name);
-		}
-		else if (function && block) {
+		if (function && block) {
 			function->add_variable (variable);
 			block->add_variable (variable);
 			return variable;
@@ -173,7 +185,7 @@ class Parser {
 	Cursor& cursor;
 public:
 	Parser (Cursor& cursor): cursor(cursor) {}
-	const Type* parse_type (bool allow_void);
+	const Type* parse_type ();
 	Number* parse_number ();
 	Substring parse_identifier ();
 	Expression* parse_expression (int level = 0);

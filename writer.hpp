@@ -333,7 +333,7 @@ public:
 		if (i < arguments.size()) return arguments[i]->get_type();
 		else return nullptr;
 	}
-	void append_argument (Variable* argument) {
+	void add_argument (Variable* argument) {
 		arguments.push_back (argument);
 	}
 	void set_return_type (const Type* return_type) {
@@ -395,18 +395,17 @@ public:
 class Class: public Type {
 	Substring name;
 	std::vector<Variable*> attributes;
-	Function* constructor;
+	std::vector<Expression*> default_values;
 public:
-	Class (const Substring& name): name(name) {
-		constructor = new Function ("init");
-		constructor->add_argument ("this", this);
-	}
+	Class (const Substring& name): name(name) {}
 	Substring get_name () const override {
 		return name;
 	}
-	void add_attribute (Variable* attribute) {
+	void add_attribute (const Substring& name, Expression* value) {
+		Variable* attribute = new Variable (name, value->get_type());
 		attribute->set_n (attributes.size());
 		attributes.push_back (attribute);
+		default_values.push_back (value);
 	}
 	Variable* get_attribute (const Substring& name) const {
 		for (Variable* attribute: attributes) {
@@ -414,8 +413,8 @@ public:
 		}
 		return nullptr;
 	}
-	Function* get_constructor () {
-		return constructor;
+	const std::vector<Expression*>& get_default_values () const {
+		return default_values;
 	}
 	void write (Writer& writer);
 	void insert (Writer& writer) const override;
@@ -426,9 +425,13 @@ public:
 
 class Instantiation: public Expression {
 	Class* _class;
+	std::vector<Expression*> attribute_values;
 	int value;
 public:
-	Instantiation (Class* _class): _class(_class) {}
+	Instantiation (Class* _class): _class(_class), attribute_values(_class->get_default_values()) {}
+	void set_attribute_value (Variable* attribute, Expression* value) {
+		attribute_values[attribute->get_n()] = value;
+	}
 	void evaluate (Writer& writer) override;
 	void insert (Writer& writer) override;
 	const Type* get_type () override {

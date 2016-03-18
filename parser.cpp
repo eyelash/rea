@@ -17,18 +17,15 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
-const Type* Parser::parse_type (bool allow_void) {
-	if (allow_void && cursor.starts_with("Void"))
-		return &Type::VOID;
+const Type* Parser::parse_type () {
 	if (cursor.starts_with("Bool"))
 		return &Type::BOOL;
 	if (cursor.starts_with("Int"))
 		return &Type::INT;
 	Substring identifier = parse_identifier ();
 	const Type* type = context.get_class (identifier);
-	if (type) return type;
-	cursor.error ("unknown type");
-	return nullptr;
+	if (!type) cursor.error ("unknown type '%'", identifier);
+	return type;
 }
 
 Number* Parser::parse_number () {
@@ -95,11 +92,24 @@ Expression* Parser::parse_expression_last () {
 		// class instantiation
 		Class* _class = context.get_class (identifier);
 		if (_class) {
+			Instantiation* instantiation = new Instantiation (_class);
 			cursor.skip_whitespace ();
 			cursor.expect ("{");
 			cursor.skip_whitespace ();
+			while (*cursor != '}') {
+				Substring attribute_name = parse_identifier ();
+				Variable* attribute = _class->get_attribute (attribute_name);
+				if (!attribute) cursor.error ("invalid attribute");
+				cursor.skip_whitespace ();
+				cursor.expect ("=");
+				cursor.skip_whitespace ();
+				Expression* expression = parse_expression ();
+				if (expression->get_type() != attribute->get_type()) cursor.error ("invalid type");
+				instantiation->set_attribute_value (attribute, expression);
+				cursor.skip_whitespace ();
+			}
 			cursor.expect ("}");
-			return new Instantiation (_class);
+			return instantiation;
 		}
 		
 		// function call
@@ -165,9 +175,7 @@ Expression* Parser::parse_expression (int level) {
 				cursor.skip_whitespace ();
 				Expression* right = parse_expression (level + 1);
 				if (op->create) left = op->create (left, right);
-				if (!left->validate()) cursor.error ([&](FILE* f){
-					fprintf (f, "invalid operands for operator '%s'", op->identifier);
-				});
+				if (!left->validate()) cursor.error ("invalid operands for operator '%'", op->identifier);
 				match = true;
 			}
 		}
@@ -179,7 +187,7 @@ Node* Parser::parse_variable_definition () {
 	cursor.expect ("var");
 	cursor.skip_whitespace ();
 	Substring name = parse_identifier ();
-	if (context.get_variable(name)) cursor.error ("variable already defined");
+	if (context.get_variable(name)) cursor.error ("the variable '%' is already defined", name);
 	cursor.skip_whitespace ();
 	cursor.expect ("=");
 	cursor.skip_whitespace ();
@@ -276,11 +284,11 @@ void Parser::parse_function () {
 	cursor.skip_whitespace ();
 	while (*cursor != ')') {
 		Substring argument_name = parse_identifier ();
+		if (function->block->get_variable(argument_name)) cursor.error ("duplicate argument name '%'", argument_name);
 		cursor.skip_whitespace ();
 		cursor.expect (":");
 		cursor.skip_whitespace ();
-		const Type* argument_type = parse_type (false);
-		// TODO: report error for duplicate argument names
+		const Type* argument_type = parse_type ();
 		function->add_argument (argument_name, argument_type);
 		cursor.skip_whitespace ();
 	}
@@ -290,7 +298,7 @@ void Parser::parse_function () {
 	// return type
 	if (cursor.starts_with(":")) {
 		cursor.skip_whitespace ();
-		const Type* return_type = parse_type (true);
+		const Type* return_type = parse_type ();
 		function->set_return_type (return_type);
 		cursor.skip_whitespace ();
 	}
@@ -314,16 +322,22 @@ void Parser::parse_class () {
 	Substring name = parse_identifier ();
 	Class* _class = new Class (name);
 	context.add_class (_class);
-	context.add_function (_class->get_constructor());
 	context._class = _class;
 	context.function = nullptr;
 	cursor.skip_whitespace ();
 	cursor.expect ("{");
 	cursor.skip_whitespace ();
 	while (*cursor != '}' && *cursor != '\0') {
-		if (cursor.starts_with("var", false)) {
-			Node* node = parse_variable_definition ();
-			_class->get_constructor()->block->add_node (node);
+		if (cursor.starts_with("var")) {
+			cursor.skip_whitespace ();
+			Substring attribute_name = parse_identifier ();
+			if (_class->get_attribute(attribute_name)) cursor.error ("duplicate attribute name '%'", attribute_name);
+			cursor.skip_whitespace ();
+			cursor.expect ("=");
+			cursor.skip_whitespace ();
+			Expression* expression = parse_expression ();
+			if (expression->get_type() == &Type::VOID) cursor.error ("attributes of type Void are not allowed");
+			_class->add_attribute (attribute_name, expression);
 		}
 		else if (cursor.starts_with("func", false)) {
 			parse_function ();
@@ -341,7 +355,7 @@ void Parser::parse_class () {
 static FunctionDeclaration* create_function (const char* name, std::initializer_list<const Type*> arguments, const Type* return_type = &Type::VOID) {
 	FunctionDeclaration* function = new FunctionDeclaration (name);
 	for (const Type* type: arguments)
-		function->append_argument (new Variable ("", type));
+		function->add_argument (new Variable ("", type));
 	function->set_return_type (return_type);
 	return function;
 }

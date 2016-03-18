@@ -1,0 +1,17 @@
+class Rectangle {
+    var x = 0
+    var y = 0
+    var width = 0
+    var height = 0
+}
+
+func area(this: Rectangle): Int {
+    return this.width * this.height
+}
+
+func main() {
+    Rectangle {
+        width = 6
+        height = 7
+    }.area().print()
+}
