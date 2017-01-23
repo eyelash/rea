@@ -17,6 +17,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "parser.hpp"
 
+using namespace ast;
+
 const Type* Parser::parse_type () {
 	if (cursor.starts_with("Bool"))
 		return &Type::BOOL;

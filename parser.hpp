@@ -15,7 +15,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 */
 
-#include "writer.hpp"
+#include "ast.hpp"
 #include <cstdio>
 
 #define CSI "\e["
@@ -23,6 +23,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #define BOLD CSI "1" "m"
 #define RED CSI "31" "m"
 #define YELLOW CSI "33" "m"
+
+using namespace ast;
 
 class Cursor {
 	const char* string;

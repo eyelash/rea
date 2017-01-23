@@ -90,3 +90,42 @@ public:
 		else return r < 0;
 	}
 };
+
+class File;
+class Printable {
+public:
+	virtual void print (File&) const = 0;
+};
+class File {
+	FILE* file;
+public:
+	File (FILE* file): file(file) {}
+	void print (const char* s) {
+		fputs (s, file);
+	}
+	void print (int n) {
+		fprintf (file, "%d", n);
+	}
+	void print (const Substring& s) {
+		s.write (file);
+	}
+	void print (const Printable& printable) {
+		printable.print (*this);
+	}
+	void print (const Printable* printable) {
+		printable->print (*this);
+	}
+	template <class T0, class... T> void print (const char* s, const T0& v0, const T&... v) {
+		while (true) {
+			if (*s == '\0') return;
+			if (*s == '%') {
+				++s;
+				if (*s != '%') break;
+			}
+			fputc (*s, file);
+			++s;
+		}
+		print (v0);
+		print (s, v...);
+	}
+};
