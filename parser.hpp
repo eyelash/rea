@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015, Elias Aebi
+Copyright (c) 2015-2017, Elias Aebi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -30,42 +30,24 @@ class Cursor {
 	const char* string;
 	int position;
 	int line;
-	void print_position (FILE* stream) {
+	void print_position (File& file) {
 		for (int i = 0; string[i] != '\n' && string[i] != '\0'; i++)
-			fputc (string[i], stream);
-		fputc ('\n', stream);
+			file.print (string[i]);
+		file.print ('\n');
 		for (int i = 0; i < position; i++) {
-			if (string[i] == '\t') fputc ('\t', stream);
-			else fputc (' ', stream);
+			if (string[i] == '\t') file.print ('\t');
+			else file.print (' ');
 		}
-		fputs (BOLD "^" RESET "\n", stream);
-	}
-	void print_message (const char* str) {
-		fputs (str, stderr);
-	}
-	void print_message (const Substring& substring) {
-		substring.write (stderr);
-	}
-	template <class T0, class... T> void print_message (const char* s, const T0& v0, const T&... v) {
-		while (true) {
-			if (*s == '\0') return;
-			if (*s == '%') {
-				++s;
-				if (*s != '%') break;
-			}
-			fputc (*s, stderr);
-			++s;
-		}
-		print_message (v0);
-		print_message (s, v...);
+		file.print (BOLD "^" RESET "\n");
 	}
 public:
 	Cursor(const char* string): string(string), position(0), line(1) {}
 	template <class... T> void error (const char* s, const T&... v) {
-		fprintf (stderr, BOLD "line %d: " RED "error: " RESET BOLD, line);
-		print_message (s, v...);
-		fputs (RESET "\n", stderr);
-		print_position (stderr);
+		File file (stderr);
+		file.print (BOLD "line %: " RED "error: " RESET BOLD, line);
+		file.print (s, v...);
+		file.print (RESET "\n");
+		print_position (file);
 		exit (EXIT_FAILURE);
 	}
 	void advance () {

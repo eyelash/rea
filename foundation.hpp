@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015, Elias Aebi
+Copyright (c) 2015-2017, Elias Aebi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -105,6 +105,9 @@ public:
 	}
 	void print (int n) {
 		fprintf (file, "%d", n);
+	}
+	void print (char c) {
+		fputc (c, file);
 	}
 	void print (const Substring& s) {
 		s.write (file);
