@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2016, Elias Aebi
+Copyright (c) 2015-2017, Elias Aebi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -22,6 +22,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 class Writer;
 namespace writer {
+	class Type;
 	class Value;
 }
 
@@ -32,8 +33,10 @@ class Bool;
 class Int;
 class Class;
 
-class Type: public Printable {
+class Type {
 public:
+	mutable writer::Type* type;
+	Type (): type(nullptr) {}
 	virtual Substring get_name () const = 0;
 	virtual const Class* get_class () const { return nullptr; }
 	static const Void VOID;
@@ -43,19 +46,16 @@ public:
 
 class Void: public Type {
 public:
-	void print (File& file) const override;
 	Substring get_name () const override { return "Void"; }
 };
 
 class Bool: public Type {
 public:
-	void print (File& file) const override;
 	Substring get_name () const override { return "Bool"; }
 };
 
 class Int: public Type {
 public:
-	void print (File& file) const override;
 	Substring get_name () const override { return "Int"; }
 };
 
@@ -345,15 +345,6 @@ class Class: public Type {
 	Substring name;
 	std::vector<Variable*> attributes;
 	std::vector<Expression*> default_values;
-	class ValueType: public Type {
-		Class* _class;
-	public:
-		ValueType (Class* _class): _class(_class) {}
-		void print (File& file) const override;
-		Substring get_name () const override {
-			return _class->get_name ();
-		}
-	};
 public:
 	Class (const Substring& name): name(name) {}
 	Substring get_name () const override {
@@ -377,12 +368,8 @@ public:
 	const std::vector<Expression*>& get_default_values () const {
 		return default_values;
 	}
-	void print (File& file) const override;
 	const Class* get_class () const override {
 		return this;
-	}
-	Type* get_value_type () {
-		return new ValueType (this);
 	}
 };
 

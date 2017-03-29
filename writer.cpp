@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2016, Elias Aebi
+Copyright (c) 2015-2017, Elias Aebi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -20,15 +20,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 const ast::Void ast::Type::VOID {};
 const ast::Bool ast::Type::BOOL {};
 const ast::Int ast::Type::INT {};
-void ast::Void::print (File& file) const {
-	file.print ("void");
-}
-void ast::Bool::print (File& file) const {
-	file.print ("i1");
-}
-void ast::Int::print (File& file) const {
-	file.print ("i32");
-}
 
 void ast::FunctionPrototype::insert_mangled_name (File& file) {
 	file.print (get_name());
@@ -52,7 +43,7 @@ writer::Value* ast::Variable::insert_address (Writer& writer) {
 }
 
 writer::Value* ast::Instantiation::insert (Writer& writer) {
-	writer::Value* result = writer.insert_alloca (_class->get_value_type());
+	writer::Value* result = writer.insert_alloca_value (_class);
 	for (int i = 0; i < attribute_values.size(); ++i) {
 		writer::Value* destination = writer.insert_gep (result, _class, i);
 		writer::Value* source = attribute_values[i]->insert (writer);
@@ -149,19 +140,40 @@ void ast::Block::write (Writer& writer) {
 	}
 }
 
-void ast::Class::print (File& file) const {
-	file.print ("%%%*", name);
-}
-void ast::Class::ValueType::print (File& file) const {
-	file.print ("%%%", _class->get_name());
-}
-
 void ast::Program::write (Writer& writer) {
 	for (FunctionDeclaration* function_declaration: function_declarations) writer.insert_function_declaration (function_declaration);
 	
 	for (Class* _class: classes) writer.insert_class (_class);
 	
 	for (Function* function: functions) function->write (writer);
+}
+
+// writer
+
+writer::Type* writer::get_type (const ast::Type* type) {
+	class PrimitiveType: public writer::Type {
+		const char* name;
+	public:
+		PrimitiveType (const char* name): name(name) {}
+		void print (File& file) const override {
+			file.print (name);
+		}
+	};
+	class ClassType: public writer::Type {
+		Substring name;
+	public:
+		ClassType (const Substring& name): name(name) {}
+		void print (File& file) const override {
+			file.print ("%%%*", name);
+		}
+	};
+	if (type->type == nullptr) {
+		if (type == &ast::Type::VOID) type->type = new PrimitiveType ("void");
+		else if (type == &ast::Type::BOOL) type->type = new PrimitiveType ("i1");
+		else if (type == &ast::Type::INT) type->type = new PrimitiveType ("i32");
+		else if (const ast::Class* _class = type->get_class()) type->type = new ClassType (_class->get_name());
+	}
+	return type->type;
 }
 
 void writer::Block::write (File& file) {
@@ -172,11 +184,11 @@ void writer::Block::write (File& file) {
 }
 
 void writer::Function::write (File& file) {
-	file.print ("define % @%(", function->get_return_type(), function->get_mangled_name());
+	file.print ("define % @%(", writer::get_type(function->get_return_type()), function->get_mangled_name());
 	if (const ast::Type* argument = function->get_argument(0)) {
-		file.print (argument);
+		file.print (writer::get_type(argument));
 		for (int i = 1; const ast::Type* argument = function->get_argument(i); ++i) {
-			file.print (", %", argument);
+			file.print (", %", writer::get_type(argument));
 		}
 	}
 	file.print (") nounwind {\n");
@@ -193,7 +205,7 @@ writer::Value* Writer::insert_literal (int n) {
 		int n;
 	public:
 		LiteralValue (int n): n(n) {}
-		void print (File& file) const {
+		void print (File& file) const override {
 			file.print (n);
 		}
 	};
@@ -204,15 +216,15 @@ writer::Value* Writer::insert_load (writer::Value* value, const ast::Type* type)
 	class LoadInstruction: public writer::Instruction {
 		writer::Value* destination;
 		writer::Value* source;
-		const ast::Type* type;
+		const writer::Type* type;
 	public:
-		LoadInstruction (writer::Value* destination, writer::Value* source, const ast::Type* type): destination(destination), source(source), type(type) {}
-		void print (File& file) const {
+		LoadInstruction (writer::Value* destination, writer::Value* source, const writer::Type* type): destination(destination), source(source), type(type) {}
+		void print (File& file) const override {
 			file.print ("% = load %* %", destination, type, source);
 		}
 	};
 	writer::Value* destination = next_value ();
-	insert_instruction (new LoadInstruction(destination, value, type));
+	insert_instruction (new LoadInstruction(destination, value, writer::get_type(type)));
 	return destination;
 }
 
@@ -220,23 +232,23 @@ void Writer::insert_store (writer::Value* destination, writer::Value* source, co
 	class StoreInstruction: public writer::Instruction {
 		writer::Value* destination;
 		writer::Value* source;
-		const ast::Type* type;
+		const writer::Type* type;
 	public:
-		StoreInstruction (writer::Value* destination, writer::Value* source, const ast::Type* type): destination(destination), source(source), type(type) {}
-		void print (File& file) const {
+		StoreInstruction (writer::Value* destination, writer::Value* source, const writer::Type* type): destination(destination), source(source), type(type) {}
+		void print (File& file) const override {
 			file.print ("store % %, %* %", type, source, type, destination);
 		}
 	};
-	insert_instruction (new StoreInstruction(destination, source, type));
+	insert_instruction (new StoreInstruction(destination, source, writer::get_type(type)));
 }
 
-writer::Value* Writer::insert_alloca (const ast::Type* type) {
+writer::Value* Writer::insert_alloca (const writer::Type* type) {
 	class AllocaInstruction: public writer::Instruction {
 		writer::Value* value;
-		const ast::Type* type;
+		const writer::Type* type;
 	public:
-		AllocaInstruction (writer::Value* value, const ast::Type* type): value(value), type(type) {}
-		void print (File& file) const {
+		AllocaInstruction (writer::Value* value, const writer::Type* type): value(value), type(type) {}
+		void print (File& file) const override {
 			file.print ("% = alloca %", value, type);
 		}
 	};
@@ -245,20 +257,36 @@ writer::Value* Writer::insert_alloca (const ast::Type* type) {
 	return value;
 }
 
+writer::Value* Writer::insert_alloca (const ast::Type* type) {
+	return insert_alloca (writer::get_type(type));
+}
+
+writer::Value* Writer::insert_alloca_value (const ast::Class* _class) {
+	class ValueType: public writer::Type {
+		Substring name;
+	public:
+		ValueType (const Substring& name): name(name) {}
+		void print (File& file) const override {
+			file.print ("%%%", name);
+		}
+	};
+	return insert_alloca (new ValueType(_class->get_name()));
+}
+
 writer::Value* Writer::insert_gep (writer::Value* value, const ast::Type* type, int index) {
 	class GEPInstruction: public writer::Instruction {
 		writer::Value* destination;
 		writer::Value* source;
-		const ast::Type* type;
+		const writer::Type* type;
 		int index;
 	public:
-		GEPInstruction (writer::Value* destination, writer::Value* source, const ast::Type* type, int index): destination(destination), source(source), type(type), index(index) {}
-		void print (File& file) const {
+		GEPInstruction (writer::Value* destination, writer::Value* source, const writer::Type* type, int index): destination(destination), source(source), type(type), index(index) {}
+		void print (File& file) const override {
 			file.print ("% = getelementptr % %, i32 0, i32 %", destination, type, source, index);
 		}
 	};
 	writer::Value* result = next_value ();
-	insert_instruction (new GEPInstruction(result, value, type, index));
+	insert_instruction (new GEPInstruction(result, value, writer::get_type(type), index));
 	return result;
 }
 
@@ -269,15 +297,15 @@ writer::Value* Writer::insert_call (ast::Call* call, const std::vector<writer::V
 		std::vector<writer::Value*> arguments;
 	public:
 		CallInstruction (writer::Value* value, ast::Call* call, const std::vector<writer::Value*>& arguments): value(value), call(call), arguments(arguments) {}
-		void print (File& file) const {
+		void print (File& file) const override {
 			if (value)
-				file.print ("% = call % @%(", value, call->get_type(), call->get_mangled_name());
+				file.print ("% = call % @%(", value, writer::get_type(call->get_type()), call->get_mangled_name());
 			else
-				file.print ("call % @%(", call->get_type(), call->get_mangled_name());
+				file.print ("call % @%(", writer::get_type(call->get_type()), call->get_mangled_name());
 			if (const ast::Type* type = call->get_argument(0)) {
-				file.print ("% %", type, arguments[0]);
+				file.print ("% %", writer::get_type(type), arguments[0]);
 				for (int i = 1; const ast::Type* type = call->get_argument(i); ++i) {
-					file.print (", % %", type, arguments[i]);
+					file.print (", % %", writer::get_type(type), arguments[i]);
 				}
 			}
 			file.print (")");
@@ -310,20 +338,20 @@ writer::Value* Writer::insert_binary_operation (const char* operation, writer::V
 void Writer::insert_return (writer::Value* value, const ast::Type* type) {
 	class ReturnInstruction: public writer::Instruction {
 		writer::Value* value;
-		const ast::Type* type;
+		const writer::Type* type;
 	public:
-		ReturnInstruction (writer::Value* value, const ast::Type* type): value(value), type(type) {}
-		void print (File& file) const {
+		ReturnInstruction (writer::Value* value, const writer::Type* type): value(value), type(type) {}
+		void print (File& file) const override {
 			if (value) file.print ("ret % %", type, value);
 			else file.print ("ret void");
 		}
 	};
-	insert_instruction (new ReturnInstruction(value, type));
+	insert_instruction (new ReturnInstruction(value, writer::get_type(type)));
 }
 void Writer::insert_return () {
 	class ReturnInstruction: public writer::Instruction {
 	public:
-		void print (File& file) const {
+		void print (File& file) const override {
 			file.print ("ret void");
 		}
 	};
@@ -337,8 +365,8 @@ void Writer::insert_branch (writer::Block* true_destination, writer::Block* fals
 		writer::Value* condition;
 	public:
 		BranchInstruction (writer::Block* true_destination, writer::Block* false_destination, writer::Value* condition): true_destination(true_destination), false_destination(false_destination), condition(condition) {}
-		void print (File& file) const {
-			file.print ("br i1 %, label %%%, label %%%", condition, true_destination->n, false_destination->n);
+		void print (File& file) const override {
+			file.print ("br i1 %, label %, label %", condition, true_destination, false_destination);
 		}
 	};
 	insert_instruction (new BranchInstruction(true_destination, false_destination, condition));
@@ -348,8 +376,8 @@ void Writer::insert_branch (writer::Block* destination) {
 		writer::Block* true_destination;
 	public:
 		BranchInstruction (writer::Block* true_destination): true_destination(true_destination) {}
-		void print (File& file) const {
-			file.print ("br label %%%", true_destination->n);
+		void print (File& file) const override {
+			file.print ("br label %", true_destination);
 		}
 	};
 	insert_instruction (new BranchInstruction(destination));
@@ -383,11 +411,11 @@ void Writer::write () {
 	File file {stdout};
 	
 	for (ast::FunctionDeclaration* function_declaration: function_declarations) {
-		file.print ("declare % @%(", function_declaration->get_return_type(), function_declaration->get_mangled_name());
+		file.print ("declare % @%(", writer::get_type(function_declaration->get_return_type()), function_declaration->get_mangled_name());
 		if (const ast::Type* argument = function_declaration->get_argument(0)) {
-			file.print (argument);
+			file.print (writer::get_type(argument));
 			for (int i = 1; const ast::Type* argument = function_declaration->get_argument(i); ++i) {
-				file.print (", %", argument);
+				file.print (", %", writer::get_type(argument));
 			}
 		}
 		file.print (")\n\n");
@@ -397,10 +425,10 @@ void Writer::write () {
 		file.print ("%%% = type {\n", _class->get_name());
 		auto i = _class->get_attributes().begin ();
 		if (i != _class->get_attributes().end()) {
-			file.print (INDENT "%", (*i)->get_type());
+			file.print (INDENT "%", writer::get_type((*i)->get_type()));
 			++i;
 			while (i != _class->get_attributes().end()) {
-				file.print (",\n" INDENT "%", (*i)->get_type());
+				file.print (",\n" INDENT "%", writer::get_type((*i)->get_type()));
 				++i;
 			}
 		}

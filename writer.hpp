@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2015-2016, Elias Aebi
+Copyright (c) 2015-2017, Elias Aebi
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -21,6 +21,12 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 namespace writer {
 
+class Type: public Printable {
+	
+};
+
+Type* get_type (const ast::Type* type);
+
 class Value: public Printable {
 	
 };
@@ -28,7 +34,7 @@ class RegisterValue: public Value {
 	int n;
 public:
 	RegisterValue (int n): n(n) {}
-	void print (File& file) const {
+	void print (File& file) const override {
 		file.print ("%%%", n);
 	}
 };
@@ -37,7 +43,7 @@ class Instruction: public Printable {
 	
 };
 
-class Block {
+class Block: public Printable {
 	std::vector<Instruction*> instructions;
 public:
 	int n;
@@ -45,6 +51,9 @@ public:
 		instructions.push_back (instruction);
 	}
 	void write (File& file);
+	void print (File& file) const override {
+		file.print ("%%%", n);
+	}
 };
 
 class Function {
@@ -68,7 +77,6 @@ class Writer {
 	std::vector<ast::Class*> classes;
 	std::vector<writer::Function*> functions;
 	int n;
-	//writer::Type* get_type (const ast::Type* type);
 	void insert_instruction (writer::Instruction* instruction) {
 		functions.back()->insert_instruction (instruction);
 	}
@@ -79,7 +87,9 @@ public:
 	writer::Value* insert_literal (int n);
 	writer::Value* insert_load (writer::Value* value, const ast::Type* type);
 	void insert_store (writer::Value* destination, writer::Value* source, const ast::Type* type);
+	writer::Value* insert_alloca (const writer::Type* type);
 	writer::Value* insert_alloca (const ast::Type* type);
+	writer::Value* insert_alloca_value (const ast::Class* _class);
 	writer::Value* insert_gep (writer::Value* value, const ast::Type* type, int index);
 	writer::Value* insert_call (ast::Call* call, const std::vector<writer::Value*>& arguments);
 	writer::Value* insert_binary_operation (const char* operation, writer::Value* left, writer::Value* right);
