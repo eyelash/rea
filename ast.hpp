@@ -206,6 +206,40 @@ public:
 	}
 };
 
+class And: public Expression {
+	Expression* left;
+	Expression* right;
+public:
+	And (Expression* left, Expression* right): left(left), right(right) {}
+	writer::Value* insert (Writer& writer) override;
+	const Type* get_type () override {
+		return &Type::BOOL;
+	}
+	bool validate () override {
+		return left->get_type() == &Type::BOOL && right->get_type() == &Type::BOOL;
+	}
+	static Expression* create (Expression* left, Expression* right) {
+		return new And (left, right);
+	}
+};
+
+class Or: public Expression {
+	Expression* left;
+	Expression* right;
+public:
+	Or (Expression* left, Expression* right): left(left), right(right) {}
+	writer::Value* insert (Writer& writer) override;
+	const Type* get_type () override {
+		return &Type::BOOL;
+	}
+	bool validate () override {
+		return left->get_type() == &Type::BOOL && right->get_type() == &Type::BOOL;
+	}
+	static Expression* create (Expression* left, Expression* right) {
+		return new Or (left, right);
+	}
+};
+
 class Node {
 public:
 	virtual void write (Writer&) = 0;

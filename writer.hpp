@@ -61,6 +61,9 @@ class Function {
 public:
 	ast::Function* function;
 	Function (ast::Function* function): function(function) {}
+	Block* get_current_block () const {
+		return blocks.back ();
+	}
 	void insert_block (Block* block) {
 		blocks.push_back (block);
 	}
@@ -97,7 +100,11 @@ public:
 	void insert_return ();
 	void insert_branch (writer::Block* destination);
 	void insert_branch (writer::Block* true_destination, writer::Block* false_destination, writer::Value* condition);
+	writer::Value* insert_phi (const ast::Type* type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2);
 	
+	writer::Block* get_current_block () {
+		return functions.back()->get_current_block ();
+	}
 	writer::Block* create_block () {
 		return new writer::Block ();
 	}

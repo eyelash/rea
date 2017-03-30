@@ -83,6 +83,38 @@ writer::Value* ast::BinaryExpression::insert (Writer& writer) {
 	return writer.insert_binary_operation (instruction, left_value, right_value);
 }
 
+writer::Value* ast::And::insert (Writer& writer) {
+	writer::Block* block0 = writer.get_current_block ();
+	writer::Block* block1 = writer.create_block ();
+	writer::Block* block2 = writer.create_block ();
+	
+	writer::Value* value0 = left->insert (writer);
+	writer.insert_branch (block1, block2, value0);
+	
+	writer.insert_block (block1);
+	writer::Value* value1 = right->insert (writer);
+	writer.insert_branch (block2);
+	
+	writer.insert_block (block2);
+	return writer.insert_phi (&ast::Type::BOOL, value0, block0, value1, block1);
+}
+
+writer::Value* ast::Or::insert (Writer& writer) {
+	writer::Block* block0 = writer.get_current_block ();
+	writer::Block* block1 = writer.create_block ();
+	writer::Block* block2 = writer.create_block ();
+	
+	writer::Value* value0 = left->insert (writer);
+	writer.insert_branch (block2, block1, value0);
+	
+	writer.insert_block (block1);
+	writer::Value* value1 = right->insert (writer);
+	writer.insert_branch (block2);
+	
+	writer.insert_block (block2);
+	return writer.insert_phi (&ast::Type::BOOL, value0, block0, value1, block1);
+}
+
 void ast::If::write (Writer& writer) {
 	writer::Block* _if = writer.create_block ();
 	writer::Block* _endif = writer.create_block ();
@@ -381,6 +413,25 @@ void Writer::insert_branch (writer::Block* destination) {
 		}
 	};
 	insert_instruction (new BranchInstruction(destination));
+}
+
+writer::Value* Writer::insert_phi (const ast::Type* type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2) {
+	class PhiInstruction: public writer::Instruction {
+		writer::Value* value;
+		const writer::Type* type;
+		writer::Value* value1;
+		writer::Block* block1;
+		writer::Value* value2;
+		writer::Block* block2;
+	public:
+		PhiInstruction (writer::Value* value, const writer::Type* type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2): value(value), type(type), value1(value1), block1(block1), value2(value2), block2(block2) {}
+		void print (File& file) const override {
+			file.print ("% = phi % [%, %], [%, %]", value, type, value1, block1, value2, block2);
+		}
+	};
+	writer::Value* value = next_value ();
+	insert_instruction (new PhiInstruction(value, writer::get_type(type), value1, block1, value2, block2));
+	return value;
 }
 
 void Writer::insert_block (writer::Block* block) {

@@ -59,10 +59,12 @@ struct Operator {
 typedef BinaryExpression BE;
 typedef ComparisonExpression CE;
 static Operator operators[][7] = {
-	{{"=", Assignment::create}, NULL},
-	{{"==", CE::eq}, {"!=", CE::ne}, {"<=", CE::le}, {">=", CE::ge}, {"<", CE::lt}, {">", CE::gt}, NULL},
-	{{"+", BE::add}, {"-", BE::sub}, NULL},
-	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, NULL}
+	{{"=", Assignment::create}, nullptr},
+	{{"||", Or::create}, nullptr},
+	{{"&&", And::create}, nullptr},
+	{{"==", CE::eq}, {"!=", CE::ne}, {"<=", CE::le}, {">=", CE::ge}, {"<", CE::lt}, {">", CE::gt}, nullptr},
+	{{"+", BE::add}, {"-", BE::sub}, nullptr},
+	{{"*", BE::mul}, {"/", BE::div}, {"%", BE::mod}, nullptr}
 };
 
 Expression* Parser::parse_expression_last () {
@@ -136,7 +138,7 @@ Expression* Parser::parse_expression_last () {
 	}
 }
 Expression* Parser::parse_expression (int level) {
-	if (level == 4) {
+	if (level == 6) {
 		Expression* expression = parse_expression_last ();
 		cursor.skip_whitespace ();
 		while (cursor.starts_with(".")) {
