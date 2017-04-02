@@ -182,6 +182,18 @@ void ast::Program::write (Writer& writer) {
 
 // writer
 
+template <class F> writer::Instruction* make_instruction (const F& f) {
+	class LambdaInstruction: public writer::Instruction {
+		F f;
+	public:
+		LambdaInstruction (const F& f): f(f) {}
+		void print (File& file) const override {
+			f (file);
+		}
+	};
+	return new LambdaInstruction (f);
+}
+
 writer::Type* writer::get_type (const ast::Type* type) {
 	class PrimitiveType: public writer::Type {
 		const char* name;
@@ -244,48 +256,27 @@ writer::Value* Writer::insert_literal (int n) {
 	return new LiteralValue (n);
 }
 
-writer::Value* Writer::insert_load (writer::Value* value, const ast::Type* type) {
-	class LoadInstruction: public writer::Instruction {
-		writer::Value* destination;
-		writer::Value* source;
-		const writer::Type* type;
-	public:
-		LoadInstruction (writer::Value* destination, writer::Value* source, const writer::Type* type): destination(destination), source(source), type(type) {}
-		void print (File& file) const override {
-			file.print ("% = load %* %", destination, type, source);
-		}
-	};
+writer::Value* Writer::insert_load (writer::Value* value, const ast::Type* _type) {
 	writer::Value* destination = next_value ();
-	insert_instruction (new LoadInstruction(destination, value, writer::get_type(type)));
+	const writer::Type* type = writer::get_type (_type);
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("% = load %* %", destination, type, value);
+	}));
 	return destination;
 }
 
-void Writer::insert_store (writer::Value* destination, writer::Value* source, const ast::Type* type) {
-	class StoreInstruction: public writer::Instruction {
-		writer::Value* destination;
-		writer::Value* source;
-		const writer::Type* type;
-	public:
-		StoreInstruction (writer::Value* destination, writer::Value* source, const writer::Type* type): destination(destination), source(source), type(type) {}
-		void print (File& file) const override {
-			file.print ("store % %, %* %", type, source, type, destination);
-		}
-	};
-	insert_instruction (new StoreInstruction(destination, source, writer::get_type(type)));
+void Writer::insert_store (writer::Value* destination, writer::Value* source, const ast::Type* _type) {
+	const writer::Type* type = writer::get_type (_type);
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("store % %, %* %", type, source, type, destination);
+	}));
 }
 
 writer::Value* Writer::insert_alloca (const writer::Type* type) {
-	class AllocaInstruction: public writer::Instruction {
-		writer::Value* value;
-		const writer::Type* type;
-	public:
-		AllocaInstruction (writer::Value* value, const writer::Type* type): value(value), type(type) {}
-		void print (File& file) const override {
-			file.print ("% = alloca %", value, type);
-		}
-	};
 	writer::Value* value = next_value ();
-	insert_instruction (new AllocaInstruction(value, type));
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("% = alloca %", value, type);
+	}));
 	return value;
 }
 
@@ -381,56 +372,28 @@ void Writer::insert_return (writer::Value* value, const ast::Type* type) {
 	insert_instruction (new ReturnInstruction(value, writer::get_type(type)));
 }
 void Writer::insert_return () {
-	class ReturnInstruction: public writer::Instruction {
-	public:
-		void print (File& file) const override {
-			file.print ("ret void");
-		}
-	};
-	insert_instruction (new ReturnInstruction());
+	insert_instruction (make_instruction([] (File& file) {
+		file.print ("ret void");
+	}));
 }
 
 void Writer::insert_branch (writer::Block* true_destination, writer::Block* false_destination, writer::Value* condition) {
-	class BranchInstruction: public writer::Instruction {
-		writer::Block* true_destination;
-		writer::Block* false_destination;
-		writer::Value* condition;
-	public:
-		BranchInstruction (writer::Block* true_destination, writer::Block* false_destination, writer::Value* condition): true_destination(true_destination), false_destination(false_destination), condition(condition) {}
-		void print (File& file) const override {
-			file.print ("br i1 %, label %, label %", condition, true_destination, false_destination);
-		}
-	};
-	insert_instruction (new BranchInstruction(true_destination, false_destination, condition));
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("br i1 %, label %, label %", condition, true_destination, false_destination);
+	}));
 }
 void Writer::insert_branch (writer::Block* destination) {
-	class BranchInstruction: public writer::Instruction {
-		writer::Block* true_destination;
-	public:
-		BranchInstruction (writer::Block* true_destination): true_destination(true_destination) {}
-		void print (File& file) const override {
-			file.print ("br label %", true_destination);
-		}
-	};
-	insert_instruction (new BranchInstruction(destination));
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("br label %", destination);
+	}));
 }
 
-writer::Value* Writer::insert_phi (const ast::Type* type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2) {
-	class PhiInstruction: public writer::Instruction {
-		writer::Value* value;
-		const writer::Type* type;
-		writer::Value* value1;
-		writer::Block* block1;
-		writer::Value* value2;
-		writer::Block* block2;
-	public:
-		PhiInstruction (writer::Value* value, const writer::Type* type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2): value(value), type(type), value1(value1), block1(block1), value2(value2), block2(block2) {}
-		void print (File& file) const override {
-			file.print ("% = phi % [%, %], [%, %]", value, type, value1, block1, value2, block2);
-		}
-	};
+writer::Value* Writer::insert_phi (const ast::Type* _type, writer::Value* value1, writer::Block* block1, writer::Value* value2, writer::Block* block2) {
 	writer::Value* value = next_value ();
-	insert_instruction (new PhiInstruction(value, writer::get_type(type), value1, block1, value2, block2));
+	const writer::Type* type = writer::get_type(_type);
+	insert_instruction (make_instruction([=] (File& file) {
+		file.print ("% = phi % [%, %], [%, %]", value, type, value1, block1, value2, block2);
+	}));
 	return value;
 }
 
